@@ -70,6 +70,7 @@ export default function App() {
   const [silenceMs, setSilenceMs] = useState(DEFAULT_SILENCE_MS);
   const [showSales, setShowSales] = useState(true); // funnel shows first
   const [salesPage, setSalesPage] = useState(0);    // which funnel page
+  const [briefPage, setBriefPage] = useState(0);    // briefing: mechanics, then coaching
 
   // conversation state machine: setup | brief | asking | listening | thinking | error
   const [phase, setPhase] = useState("setup");
@@ -193,6 +194,7 @@ export default function App() {
       ["silenceMs", String(silenceMs)],
     ]);
     setStatus("");
+    setBriefPage(0);
     setConfigured(true);
     setPhase("brief");
   }
@@ -553,29 +555,60 @@ export default function App() {
     );
   }
 
-  // Briefing — the "how to talk to Shotgun" instructions, shown every time
-  // before the interview starts. The begin button is also the user tap that
-  // kicks off audio, which iOS treats far more reliably than autoplay.
+  // Briefing — shown every time before the interview starts. Two pages:
+  // the mechanics of talking to Shotgun, then the coaching a biographer
+  // gives a subject before an interview (specifics, names, feelings —
+  // that's what makes the difference between recollections and a book).
+  // The begin button is also the user tap that kicks off audio, which iOS
+  // treats far more reliably than autoplay.
   if (phase === "brief") {
+    const briefPages = [
+      {
+        title: "How this works",
+        cta: "Continue",
+        items: [
+          ["Turn the volume up.", "Questions are spoken aloud — through the car speakers if your phone is connected to Bluetooth."],
+          ["Just talk, naturally.", "Answer out loud the way you'd talk to a friend in the passenger seat. Take your time — long pauses are fine, it won't cut you off."],
+          ["Quiet means \"done.\"", `When you've finished and stay quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds, the next question comes.`],
+          ["Skip anytime.", "Say “Okay, next question” out loud to move on from any question."],
+          ["Nothing is lost.", "Every word is recorded and saved — these conversations become the biography your family keeps."],
+          ["Stop whenever.", "Tap “End session” when you're done. Next drive picks up right where you left off."],
+        ],
+      },
+      {
+        title: "How to tell it well",
+        subtitle: "The same advice a biographer gives before any interview:",
+        cta: "Begin — the first question is spoken aloud",
+        items: [
+          ["Go specific, not general.", "One real afternoon beats “we always used to.” Where were you standing? Who else was there? What could you smell?"],
+          ["Say the names.", "“My brother Tommy,” not “my brother.” Names, places, and dates make it a biography — don't worry about getting them perfect."],
+          ["Follow the detours.", "If one memory sparks another, chase it. The story you didn't plan to tell is usually the best one in the book."],
+          ["Feelings are the story.", "Not just what happened — what you were afraid of, what you hoped, what you'd say to that younger you now."],
+          ["Don't polish it.", "No preparing, no wrong answers, no starting over. The first telling is the truest — and anything you'd rather not answer, just skip."],
+        ],
+      },
+    ];
+    const bp = briefPages[briefPage];
+    const isLastBrief = briefPage === briefPages.length - 1;
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
         <View style={s.funnelHeader}>
-          <Pressable style={s.backBtn} hitSlop={12} onPress={() => setConfigured(false)}>
+          <Pressable style={s.backBtn} hitSlop={12}
+            onPress={() => (briefPage > 0 ? setBriefPage(briefPage - 1) : setConfigured(false))}>
             <Text style={s.backText}>‹</Text>
           </Pressable>
+          <View style={s.dots}>
+            {briefPages.map((p, i) => (
+              <View key={p.title} style={[s.dot, i === briefPage && s.dotActive]} />
+            ))}
+          </View>
           <View style={s.backBtn} />
         </View>
         <ScrollView contentContainerStyle={s.funnelScroll} showsVerticalScrollIndicator={false}>
-          <Text style={s.h1}>How this works</Text>
-          {[
-            ["Turn the volume up.", "Questions are spoken aloud — through the car speakers if your phone is connected to Bluetooth."],
-            ["Just talk, naturally.", "Answer out loud the way you'd talk to a friend in the passenger seat. Take your time — long pauses are fine, it won't cut you off."],
-            ["Quiet means \"done.\"", `When you've finished and stay quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds, the next question comes.`],
-            ["Skip anytime.", "Say “Okay, next question” out loud to move on from any question."],
-            ["Nothing is lost.", "Every word is recorded and saved — these conversations become the biography your family keeps."],
-            ["Stop whenever.", "Tap “End session” when you're done. Next drive picks up right where you left off."],
-          ].map(([title, body]) => (
+          <Text style={s.h1}>{bp.title}</Text>
+          {!!bp.subtitle && <Text style={s.subhead}>{bp.subtitle}</Text>}
+          {bp.items.map(([title, body]) => (
             <View style={s.step} key={title}>
               <Text style={s.briefDot}>•</Text>
               <View style={s.stepBody}>
@@ -585,8 +618,9 @@ export default function App() {
             </View>
           ))}
         </ScrollView>
-        <Pressable style={s.primary} onPress={startSession}>
-          <Text style={s.primaryText}>Begin — the first question is spoken aloud</Text>
+        <Pressable style={s.primary}
+          onPress={() => (isLastBrief ? startSession() : setBriefPage(briefPage + 1))}>
+          <Text style={s.primaryText}>{bp.cta}</Text>
         </Pressable>
       </SafeAreaView>
     );
