@@ -83,8 +83,14 @@ export default function App() {
   const [showSales, setShowSales] = useState(true); // funnel shows first
   const [salesPage, setSalesPage] = useState(0);    // which funnel page
   const [briefPage, setBriefPage] = useState(0);    // briefing: mechanics, then coaching
-  const [view, setView] = useState(null);           // "home" once they have stories
+  const [view, setView] = useState(null);           // "home" | "account" | null
   const [stories, setStories] = useState([]);       // everything told so far
+
+  // account (v1: email + name, no verification yet — see backend /account)
+  const [account, setAccount] = useState(null);
+  const [buyerName, setBuyerName] = useState("");
+  const [email, setEmail] = useState("");
+  const [authMode, setAuthMode] = useState("create"); // "create" | "signin"
 
   // conversation state machine: setup | brief | asking | listening | thinking | error
   const [phase, setPhase] = useState("setup");
@@ -110,20 +116,28 @@ export default function App() {
   // ---------- boot: restore config ------------------------------------------
   useEffect(() => {
     (async () => {
-      const [n, a, id, sil] = await Promise.all([
+      const [n, a, id, sil, acRaw] = await Promise.all([
         AsyncStorage.getItem("name"), AsyncStorage.getItem("about"),
         AsyncStorage.getItem("subjectId"), AsyncStorage.getItem("silenceMs"),
+        AsyncStorage.getItem("account"),
       ]);
       if (n) setName(n);
       if (a) setAbout(a);
       if (sil) setSilenceMs(Number(sil) || DEFAULT_SILENCE_MS);
+      let acct = null;
+      if (acRaw) {
+        try { acct = JSON.parse(acRaw); } catch { /* corrupt — ignore */ }
+        if (acct) { setAccount(acct); setEmail(acct.email || ""); }
+      }
       if (id) {
         setSubjectId(id);
         // Returning user with stories on file → land on the home catalog,
         // not the sales funnel.
         const st = await loadStories(id);
-        if (st.length) { setShowSales(false); setView("home"); }
+        if (st.length) { setShowSales(false); setView("home"); return; }
       }
+      // Signed in but no stories yet → straight to setup, skip the funnel.
+      if (acct) setShowSales(false);
     })();
     // "background" only — the mic-permission alert briefly makes the app
     // "inactive", and treating that as backgrounding would kill the session.
@@ -145,6 +159,30 @@ export default function App() {
       return st;
     } catch {
       return [];
+    }
+  }
+
+  async function submitAccount() {
+    const em = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) {
+      setStatus("Enter a valid email address."); return;
+    }
+    setStatus("One moment…");
+    try {
+      const r = await fetch(`${SERVER}/account`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: em, name: buyerName.trim(), subjectId }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      const data = await r.json();
+      const acct = { accountId: data.accountId, email: data.email, name: data.name };
+      await AsyncStorage.setItem("account", JSON.stringify(acct));
+      setAccount(acct);
+      setStatus("");
+      if (stories.length) { setView("home"); }
+      else { setView(null); setShowSales(false); } // on to interview setup
+    } catch {
+      setStatus("Couldn't reach the server — try again.");
     }
   }
 
@@ -552,6 +590,59 @@ export default function App() {
           onPress={() => { setStatus(""); setView(null); }}>
           <Text style={s.homeSettingsText}>Interview setup</Text>
         </Pressable>
+        {!!account && <Text style={s.signedIn}>Signed in as {account.email}</Text>}
+      </SafeAreaView>
+    );
+  }
+
+  // Account — after the paywall, before setup. v1: email + name only, with
+  // honest copy; Sign in with Apple + verification come with the paid build.
+  if (!configured && view === "account") {
+    const creating = authMode === "create";
+    return (
+      <SafeAreaView style={s.rootLight}>
+        <StatusBar style="dark" />
+        <View style={s.funnelHeader}>
+          <Pressable style={s.backBtn} hitSlop={12}
+            onPress={() => { setStatus(""); setView(null); setShowSales(true); }}>
+            <Text style={s.backText}>‹</Text>
+          </Pressable>
+          <View style={s.backBtn} />
+        </View>
+        <ScrollView contentContainerStyle={s.setupScroll} showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={s.panel}>
+            <Text style={s.h2}>{creating ? "Create your account" : "Welcome back"}</Text>
+            <Text style={s.p}>
+              {creating
+                ? "Your account is where the finished biography is delivered — and how the recordings stay safe if the phone doesn't."
+                : "Sign in with the email you used before."}
+            </Text>
+            {creating && (
+              <>
+                <Text style={s.label}>YOUR NAME</Text>
+                <TextInput style={s.input} value={buyerName} onChangeText={setBuyerName}
+                  autoCapitalize="words" autoComplete="name"
+                  placeholder="e.g. Carter" placeholderTextColor={COLORS.inkSoft} />
+              </>
+            )}
+            <Text style={s.label}>EMAIL</Text>
+            <TextInput style={s.input} value={email} onChangeText={setEmail}
+              autoCapitalize="none" autoCorrect={false} keyboardType="email-address"
+              autoComplete="email"
+              placeholder="you@example.com" placeholderTextColor={COLORS.inkSoft} />
+            <Pressable style={s.primary} onPress={submitAccount}>
+              <Text style={s.primaryText}>{creating ? "Create account" : "Sign in"}</Text>
+            </Pressable>
+            <Pressable style={s.homeSettings} hitSlop={8}
+              onPress={() => { setStatus(""); setAuthMode(creating ? "signin" : "create"); }}>
+              <Text style={s.homeSettingsText}>
+                {creating ? "Already have an account? Sign in" : "New here? Create an account"}
+              </Text>
+            </Pressable>
+            {!!status && <Text style={s.hintLight}>{status}</Text>}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -585,7 +676,12 @@ export default function App() {
 
         <Pressable
           style={s.primary}
-          onPress={() => (isLast ? setShowSales(false) : setSalesPage(salesPage + 1))}
+          onPress={() => {
+            if (!isLast) { setSalesPage(salesPage + 1); return; }
+            // Paywall CTA → account (or straight to setup when signed in).
+            setShowSales(false);
+            if (account) setView(null); else setView("account");
+          }}
         >
           <Text style={s.primaryText}>{page.cta}</Text>
         </Pressable>
@@ -755,6 +851,7 @@ const s = StyleSheet.create({
   storyText: { color: COLORS.ink, fontSize: 15, lineHeight: 23, fontFamily: SERIF, fontStyle: "italic" },
   homeSettings: { alignSelf: "center", marginTop: 12, paddingVertical: 4 },
   homeSettingsText: { color: COLORS.inkSoft, fontSize: 14, textDecorationLine: "underline" },
+  signedIn: { color: COLORS.inkSoft, fontSize: 12, textAlign: "center", marginTop: 6 },
   funnelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     marginTop: 4, marginBottom: 8 },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
