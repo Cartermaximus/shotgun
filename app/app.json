@@ -4,8 +4,8 @@
     "slug": "shotgun",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#151a26",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FBF8F3",
     "ios": {
       "bundleIdentifier": "com.yourname.shotgun",
       "supportsTablet": false,

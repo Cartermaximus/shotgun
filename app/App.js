@@ -13,6 +13,11 @@
 //
 // v1 constraints (deliberate): foreground only (screen on, phone mounted —
 // matches "listens while the app is open"), batch transcription per answer.
+//
+// Design language: "heirloom publisher" — warm paper, deep pine green,
+// serif display type (the category convention for memoir/keepsake apps).
+// The interview screen alone stays dark: it's used mounted in a car,
+// often at night, where a bright screen is glare.
 
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -35,9 +40,22 @@ const METERING_SILENCE_DB = -40;   // below this = "quiet" (tune in real car)
 const METER_INTERVAL_MS = 300;
 
 const COLORS = {
-  dusk: "#1c2230", duskDeep: "#151a26", lamp: "#e8b465",
-  bone: "#f4efe6", boneDim: "#b9b3a8", ok: "#7fb89a",
+  // light (funnel, setup)
+  paper: "#FBF8F3",      // warm white — the page of a book
+  ink: "#22302B",        // near-black green — body text
+  inkSoft: "#5C6B64",    // secondary text
+  pine: "#2E5947",       // brand green — buttons, links, active states
+  pineDeep: "#1F4033",   // pressed / emphasis
+  sageTint: "#E7EFE9",   // soft green fill for cards
+  hairline: "#E4DFD5",   // borders on paper
+  // dark (in-car interview screen)
+  night: "#101B16",      // near-black green
+  moon: "#F2F5F0",       // text on night
+  moonDim: "#9AA8A0",    // secondary text on night
+  sage: "#A8C5B4",       // listening accent on night
 };
+
+const SERIF = "Georgia"; // iOS system serif — the editorial/book voice
 
 const SERVER = SERVER_URL.replace(/\/$/, "");
 
@@ -379,8 +397,8 @@ export default function App() {
     const page = funnelPages[salesPage];
     const isLast = salesPage === funnelPages.length - 1;
     return (
-      <SafeAreaView style={s.root}>
-        <StatusBar style="light" />
+      <SafeAreaView style={s.rootLight}>
+        <StatusBar style="dark" />
         {/* Header: back chevron (after page 1) + progress dots */}
         <View style={s.funnelHeader}>
           {salesPage > 0 ? (
@@ -415,8 +433,8 @@ export default function App() {
 
   if (!configured) {
     return (
-      <SafeAreaView style={s.root}>
-        <StatusBar style="light" />
+      <SafeAreaView style={s.rootLight}>
+        <StatusBar style="dark" />
         <View style={s.funnelHeader}>
           <Pressable style={s.backBtn} hitSlop={12}
             onPress={() => { setStatus(""); setShowSales(true); }}>
@@ -427,13 +445,13 @@ export default function App() {
         <View style={s.panel}>
           <Text style={s.h2}>Set up the interview</Text>
           <Text style={s.p}>Do this once, before driving. Then it's just talking.</Text>
-          <Text style={s.label}>Who's telling their story?</Text>
+          <Text style={s.label}>WHO'S TELLING THEIR STORY?</Text>
           <TextInput style={s.input} value={name} onChangeText={setName}
-            placeholder="e.g. Dad" placeholderTextColor={COLORS.boneDim} />
+            placeholder="e.g. Dad" placeholderTextColor={COLORS.inkSoft} />
           <Pressable style={s.primary} onPress={startSession}>
             <Text style={s.primaryText}>Start talking</Text>
           </Pressable>
-          {!!status && <Text style={s.hint}>{status}</Text>}
+          {!!status && <Text style={s.hintLight}>{status}</Text>}
         </View>
       </SafeAreaView>
     );
@@ -444,9 +462,9 @@ export default function App() {
   }[phase] || "";
 
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.rootDark}>
       <StatusBar style="light" />
-      <Text style={s.eyebrow}>TELLING YOUR STORY{name ? ` · ${name.toUpperCase()}` : ""}</Text>
+      <Text style={s.eyebrowDark}>TELLING YOUR STORY{name ? ` · ${name.toUpperCase()}` : ""}</Text>
       <View style={s.qWrap}>
         <Text style={s.question}>{question}</Text>
       </View>
@@ -454,14 +472,14 @@ export default function App() {
       <View style={[s.orb,
         phase === "listening" && s.orbListening,
         phase === "thinking" && s.orbThinking]}>
-        <Text style={s.orbText}>{phaseLabel}</Text>
+        <Text style={[s.orbText, phase === "listening" && s.orbTextListening]}>{phaseLabel}</Text>
       </View>
       <Text style={s.hint}>{status ||
         (phase === "listening" ? "Just talk. Long pauses are fine — I'll wait." :
          phase === "asking" ? "" : "")}</Text>
       {phase === "error" && (
-        <Pressable style={s.primary} onPress={retryFromError}>
-          <Text style={s.primaryText}>Tap to continue</Text>
+        <Pressable style={s.primaryOnDark} onPress={retryFromError}>
+          <Text style={s.primaryOnDarkText}>Tap to continue</Text>
         </Pressable>
       )}
       <Pressable style={s.endBtn} onPress={endSession}>
@@ -472,60 +490,78 @@ export default function App() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.duskDeep, padding: 24 },
-  panel: { marginTop: "auto", marginBottom: "auto", backgroundColor: "rgba(0,0,0,0.22)",
-    borderRadius: 18, padding: 22, borderWidth: 1, borderColor: "rgba(244,239,230,0.1)" },
-  h2: { color: COLORS.bone, fontSize: 24, fontWeight: "600", marginBottom: 8 },
-  p: { color: COLORS.boneDim, fontSize: 15, lineHeight: 21, marginBottom: 14 },
-  label: { color: COLORS.lamp, fontSize: 12, letterSpacing: 1.2, marginTop: 10, marginBottom: 6 },
-  input: { backgroundColor: "rgba(0,0,0,0.25)", borderWidth: 1, borderColor: "rgba(244,239,230,0.2)",
-    borderRadius: 12, padding: 14, color: COLORS.bone, fontSize: 16 },
-  primary: { backgroundColor: COLORS.lamp, borderRadius: 14, padding: 16, marginTop: 18, alignItems: "center" },
-  primaryText: { color: COLORS.duskDeep, fontWeight: "700", fontSize: 17 },
-
-  // ---- sales funnel ----
+  // ---- light chrome (funnel + setup) ----
+  rootLight: { flex: 1, backgroundColor: COLORS.paper, padding: 24 },
   funnelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     marginTop: 4, marginBottom: 8 },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  backText: { color: COLORS.bone, fontSize: 34, lineHeight: 38, marginTop: -4 },
+  backText: { color: COLORS.ink, fontSize: 34, lineHeight: 38, marginTop: -4 },
   dots: { flexDirection: "row", gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(244,239,230,0.25)" },
-  dotActive: { backgroundColor: COLORS.lamp },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.hairline },
+  dotActive: { backgroundColor: COLORS.pine },
   funnelScroll: { flexGrow: 1, justifyContent: "center", paddingBottom: 24 },
-  h1: { color: COLORS.bone, fontSize: 34, lineHeight: 42, fontWeight: "700", marginTop: 12 },
-  subhead: { color: COLORS.boneDim, fontSize: 17, lineHeight: 25, marginTop: 14 },
-  step: { flexDirection: "row", marginTop: 18 },
-  stepNum: { color: COLORS.lamp, fontSize: 18, fontWeight: "800", width: 28 },
+
+  eyebrow: { color: COLORS.pine, fontSize: 13, letterSpacing: 3, fontWeight: "700", marginTop: 8 },
+  h1: { color: COLORS.ink, fontSize: 34, lineHeight: 42, fontFamily: SERIF, marginTop: 12 },
+  subhead: { color: COLORS.inkSoft, fontSize: 17, lineHeight: 26, marginTop: 14 },
+
+  step: { flexDirection: "row", marginTop: 20 },
+  stepNum: { color: COLORS.pine, fontSize: 20, fontFamily: SERIF, width: 30 },
   stepBody: { flex: 1 },
-  stepTitle: { color: COLORS.bone, fontSize: 17, fontWeight: "600", marginBottom: 3 },
-  stepText: { color: COLORS.boneDim, fontSize: 15, lineHeight: 22 },
+  stepTitle: { color: COLORS.ink, fontSize: 17, fontWeight: "600", marginBottom: 3 },
+  stepText: { color: COLORS.inkSoft, fontSize: 15, lineHeight: 22 },
+
   benefit: { flexDirection: "row", alignItems: "flex-start", marginTop: 10 },
-  benefitDot: { color: COLORS.ok, fontSize: 16, fontWeight: "700", marginRight: 10, marginTop: 1 },
-  benefitText: { color: COLORS.bone, fontSize: 16, lineHeight: 23, flex: 1 },
-  priceCard: { marginTop: 22, backgroundColor: "rgba(0,0,0,0.22)", borderRadius: 16, padding: 22,
-    alignItems: "center", borderWidth: 1, borderColor: "rgba(232,180,101,0.4)" },
-  priceStrike: { color: COLORS.boneDim, fontSize: 15, textDecorationLine: "line-through" },
-  priceBig: { color: COLORS.lamp, fontSize: 46, fontWeight: "800", marginTop: 8 },
-  priceSub: { color: COLORS.boneDim, fontSize: 14, marginTop: 4 },
-  quoteCard: { backgroundColor: "rgba(0,0,0,0.22)", borderRadius: 14, padding: 18, marginTop: 14,
-    borderLeftWidth: 3, borderLeftColor: COLORS.lamp },
-  quoteText: { color: COLORS.bone, fontSize: 16, lineHeight: 24, fontStyle: "italic" },
-  quoteAttr: { color: COLORS.lamp, fontSize: 13, marginTop: 10 },
-  guaranteeCard: { marginTop: 22, backgroundColor: "rgba(127,184,154,0.1)", borderRadius: 14,
-    padding: 18, borderWidth: 1, borderColor: "rgba(127,184,154,0.5)" },
-  guaranteeText: { color: COLORS.bone, fontSize: 16, lineHeight: 23 },
-  footnote: { color: COLORS.boneDim, fontSize: 12, textAlign: "center", marginTop: 12 },
-  eyebrow: { color: COLORS.lamp, fontSize: 12, letterSpacing: 2, fontWeight: "600", marginTop: 8 },
+  benefitDot: { color: COLORS.pine, fontSize: 16, fontWeight: "700", marginRight: 10, marginTop: 1 },
+  benefitText: { color: COLORS.ink, fontSize: 16, lineHeight: 23, flex: 1 },
+
+  priceCard: { marginTop: 22, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 22,
+    alignItems: "center", borderWidth: 1, borderColor: COLORS.hairline,
+    shadowColor: COLORS.ink, shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  priceStrike: { color: COLORS.inkSoft, fontSize: 15, textDecorationLine: "line-through" },
+  priceBig: { color: COLORS.pine, fontSize: 48, fontFamily: SERIF, marginTop: 8 },
+  priceSub: { color: COLORS.inkSoft, fontSize: 14, marginTop: 4 },
+
+  quoteCard: { backgroundColor: "#FFFFFF", borderRadius: 14, padding: 18, marginTop: 14,
+    borderWidth: 1, borderColor: COLORS.hairline, borderLeftWidth: 3, borderLeftColor: COLORS.pine },
+  quoteText: { color: COLORS.ink, fontSize: 17, lineHeight: 26, fontFamily: SERIF, fontStyle: "italic" },
+  quoteAttr: { color: COLORS.pine, fontSize: 13, marginTop: 10, fontWeight: "600" },
+
+  guaranteeCard: { marginTop: 22, backgroundColor: COLORS.sageTint, borderRadius: 14, padding: 18 },
+  guaranteeText: { color: COLORS.ink, fontSize: 16, lineHeight: 23 },
+
+  primary: { backgroundColor: COLORS.pine, borderRadius: 14, padding: 16, marginTop: 18, alignItems: "center" },
+  primaryText: { color: COLORS.paper, fontWeight: "700", fontSize: 17 },
+  footnote: { color: COLORS.inkSoft, fontSize: 12, textAlign: "center", marginTop: 12 },
+
+  // setup card
+  panel: { marginTop: "auto", marginBottom: "auto", backgroundColor: "#FFFFFF",
+    borderRadius: 18, padding: 22, borderWidth: 1, borderColor: COLORS.hairline,
+    shadowColor: COLORS.ink, shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  h2: { color: COLORS.ink, fontSize: 26, fontFamily: SERIF, marginBottom: 8 },
+  p: { color: COLORS.inkSoft, fontSize: 15, lineHeight: 21, marginBottom: 14 },
+  label: { color: COLORS.pine, fontSize: 12, letterSpacing: 1.2, fontWeight: "700",
+    marginTop: 10, marginBottom: 6 },
+  input: { backgroundColor: COLORS.paper, borderWidth: 1, borderColor: COLORS.hairline,
+    borderRadius: 12, padding: 14, color: COLORS.ink, fontSize: 16 },
+  hintLight: { color: COLORS.inkSoft, textAlign: "center", marginTop: 16, minHeight: 20, fontSize: 14 },
+
+  // ---- dark in-car interview screen ----
+  rootDark: { flex: 1, backgroundColor: COLORS.night, padding: 24 },
+  eyebrowDark: { color: COLORS.sage, fontSize: 12, letterSpacing: 2, fontWeight: "600", marginTop: 8 },
   qWrap: { flex: 1, justifyContent: "center" },
-  question: { color: COLORS.bone, fontSize: 30, lineHeight: 40, fontWeight: "500" },
-  heard: { color: COLORS.boneDim, fontSize: 14, textAlign: "center", marginBottom: 12 },
+  question: { color: COLORS.moon, fontSize: 30, lineHeight: 42, fontFamily: SERIF },
+  heard: { color: COLORS.moonDim, fontSize: 14, textAlign: "center", marginBottom: 12 },
   orb: { alignSelf: "center", width: 170, height: 170, borderRadius: 85,
-    backgroundColor: COLORS.lamp, alignItems: "center", justifyContent: "center" },
-  orbListening: { backgroundColor: COLORS.ok },
+    backgroundColor: COLORS.pine, alignItems: "center", justifyContent: "center" },
+  orbListening: { backgroundColor: COLORS.sage },
   orbThinking: { opacity: 0.5 },
-  orbText: { color: COLORS.duskDeep, fontWeight: "700", fontSize: 18 },
-  hint: { color: COLORS.boneDim, textAlign: "center", marginTop: 16, minHeight: 20, fontSize: 14 },
+  orbText: { color: COLORS.moon, fontWeight: "700", fontSize: 18 },
+  orbTextListening: { color: COLORS.night },
+  hint: { color: COLORS.moonDim, textAlign: "center", marginTop: 16, minHeight: 20, fontSize: 14 },
+  primaryOnDark: { backgroundColor: COLORS.moon, borderRadius: 14, padding: 16, marginTop: 18, alignItems: "center" },
+  primaryOnDarkText: { color: COLORS.night, fontWeight: "700", fontSize: 17 },
   endBtn: { alignSelf: "center", marginTop: 18, paddingVertical: 9, paddingHorizontal: 18,
-    borderRadius: 999, borderWidth: 1, borderColor: "rgba(244,239,230,0.22)" },
-  endText: { color: COLORS.boneDim, fontSize: 14 },
+    borderRadius: 999, borderWidth: 1, borderColor: "rgba(242,245,240,0.25)" },
+  endText: { color: COLORS.moonDim, fontSize: 14 },
 });
