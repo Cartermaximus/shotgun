@@ -1,0 +1,39 @@
+# backend is its own git repo (github.com/Cartermaximus/shotgun-backend) — tracked separately
+backend/
+
+# local, machine-specific Claude Code settings
+.claude/settings.local.json
+
+# dependencies
+node_modules/
+
+# private user data — recordings (the keepsake) + subject transcripts. NEVER commit.
+backend/data/
+
+# secrets / API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+.env
+.env.*
+*.pem
+*.key
+
+# expo / react-native
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+*.orig.*
+
+# logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS / editor
+.DS_Store
+.idea/
+.vscode/

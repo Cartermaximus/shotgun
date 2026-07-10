@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Shotgun",
+    "slug": "shotgun",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#151a26",
+    "ios": {
+      "bundleIdentifier": "com.yourname.shotgun",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Shotgun records your voice while you tell your life story, so it can be kept for your family.",
+        "UIBackgroundModes": ["audio"]
+      }
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Shotgun records your voice while you tell your life story, so it can be kept for your family."
+        }
+      ]
+    ]
+  }
+}
