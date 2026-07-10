@@ -59,6 +59,18 @@ const SERIF = "Georgia"; // iOS system serif — the editorial/book voice
 
 const SERVER = SERVER_URL.replace(/\/$/, "");
 
+// Life chapters, in age order — mirrors the backend's THEMES. The home
+// screen catalogs everything told so far under these headings.
+const CHAPTERS = [
+  ["childhood", "Childhood"],
+  ["growing_up", "Growing up"],
+  ["family_and_parents", "Family & parents"],
+  ["love_and_relationships", "Love & relationships"],
+  ["work_and_purpose", "Work & purpose"],
+  ["hard_times", "Hard times"],
+  ["beliefs_and_legacy", "Beliefs & legacy"],
+];
+
 export default function App() {
   useKeepAwake(); // never let the screen sleep mid-session (in-car essential)
 
@@ -71,6 +83,8 @@ export default function App() {
   const [showSales, setShowSales] = useState(true); // funnel shows first
   const [salesPage, setSalesPage] = useState(0);    // which funnel page
   const [briefPage, setBriefPage] = useState(0);    // briefing: mechanics, then coaching
+  const [view, setView] = useState(null);           // "home" once they have stories
+  const [stories, setStories] = useState([]);       // everything told so far
 
   // conversation state machine: setup | brief | asking | listening | thinking | error
   const [phase, setPhase] = useState("setup");
@@ -103,7 +117,13 @@ export default function App() {
       if (n) setName(n);
       if (a) setAbout(a);
       if (sil) setSilenceMs(Number(sil) || DEFAULT_SILENCE_MS);
-      if (id) setSubjectId(id);
+      if (id) {
+        setSubjectId(id);
+        // Returning user with stories on file → land on the home catalog,
+        // not the sales funnel.
+        const st = await loadStories(id);
+        if (st.length) { setShowSales(false); setView("home"); }
+      }
     })();
     // "background" only — the mic-permission alert briefly makes the app
     // "inactive", and treating that as backgrounding would kill the session.
@@ -115,6 +135,18 @@ export default function App() {
     });
     return () => { aliveRef.current = false; sub.remove(); stopEverything(); };
   }, []);
+
+  async function loadStories(id) {
+    try {
+      const r = await fetch(`${SERVER}/subject/${id}`);
+      const data = await r.json();
+      const st = Array.isArray(data.stories) ? data.stories : [];
+      setStories(st);
+      return st;
+    } catch {
+      return [];
+    }
+  }
 
   function stopEverything() {
     Speech.stop();
@@ -340,6 +372,10 @@ export default function App() {
     setQuestion(""); setHeard("");
     setPhase("setup"); setConfigured(false);
     setStatus("Session saved. See you next drive.");
+    // Land on the story catalog, freshly updated with this session.
+    await loadStories(subjectId);
+    setShowSales(false);
+    setView("home");
   }
 
   // ---------- UI --------------------------------------------------------------
@@ -479,6 +515,47 @@ export default function App() {
     },
   ];
 
+  // Home — the story so far, cataloged by life chapter, oldest age first.
+  // Shown to returning users instead of the sales funnel.
+  if (!configured && view === "home") {
+    const grouped = CHAPTERS
+      .map(([key, label]) => [label, stories.filter((st) => st.theme === key)])
+      .filter(([, list]) => list.length > 0);
+    return (
+      <SafeAreaView style={s.rootLight}>
+        <StatusBar style="dark" />
+        <ScrollView contentContainerStyle={s.homeScroll} showsVerticalScrollIndicator={false}>
+          <Text style={s.eyebrow}>SHOTGUN</Text>
+          <Text style={s.h1}>{name ? `${name}'s story so far` : "The story so far"}</Text>
+          <Text style={s.subhead}>
+            {stories.length} {stories.length === 1 ? "story" : "stories"} saved for your family.
+          </Text>
+          {grouped.map(([label, list]) => (
+            <View style={s.chapter} key={label}>
+              <Text style={s.chapterTitle}>{label}</Text>
+              {list.map((st, i) => (
+                <View style={s.storyCard} key={st.at || i}>
+                  <Text style={s.storyText} numberOfLines={3}>
+                    “{st.text.length > 180 ? st.text.slice(0, 180).trim() + "…" : st.text}”
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ))}
+          {!!status && <Text style={s.hintLight}>{status}</Text>}
+        </ScrollView>
+        <Pressable style={s.primary}
+          onPress={() => { setStatus(""); setBriefPage(0); setConfigured(true); setPhase("brief"); }}>
+          <Text style={s.primaryText}>Continue the interview</Text>
+        </Pressable>
+        <Pressable style={s.homeSettings} hitSlop={8}
+          onPress={() => { setStatus(""); setView(null); }}>
+          <Text style={s.homeSettingsText}>Interview setup</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
   if (!configured && showSales) {
     const page = funnelPages[salesPage];
     const isLast = salesPage === funnelPages.length - 1;
@@ -523,7 +600,10 @@ export default function App() {
         <StatusBar style="dark" />
         <View style={s.funnelHeader}>
           <Pressable style={s.backBtn} hitSlop={12}
-            onPress={() => { setStatus(""); setShowSales(true); }}>
+            onPress={() => {
+              setStatus("");
+              if (stories.length) setView("home"); else setShowSales(true);
+            }}>
             <Text style={s.backText}>‹</Text>
           </Pressable>
           <View style={s.backBtn} />
@@ -662,8 +742,19 @@ export default function App() {
 }
 
 const s = StyleSheet.create({
-  // ---- light chrome (funnel + setup + briefing) ----
-  rootLight: { flex: 1, backgroundColor: COLORS.paper, paddingHorizontal: 28, paddingVertical: 20 },
+  // ---- light chrome (funnel + setup + briefing + home) ----
+  rootLight: { flex: 1, backgroundColor: COLORS.paper, paddingHorizontal: 32, paddingVertical: 20 },
+
+  // home / story catalog
+  homeScroll: { paddingBottom: 16, paddingTop: 8 },
+  chapter: { marginTop: 26 },
+  chapterTitle: { color: COLORS.pine, fontSize: 13, letterSpacing: 1.6, fontWeight: "700",
+    textTransform: "uppercase", marginBottom: 4 },
+  storyCard: { backgroundColor: "#FFFFFF", borderRadius: 12, padding: 14, marginTop: 8,
+    borderWidth: 1, borderColor: COLORS.hairline },
+  storyText: { color: COLORS.ink, fontSize: 15, lineHeight: 23, fontFamily: SERIF, fontStyle: "italic" },
+  homeSettings: { alignSelf: "center", marginTop: 12, paddingVertical: 4 },
+  homeSettingsText: { color: COLORS.inkSoft, fontSize: 14, textDecorationLine: "underline" },
   funnelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     marginTop: 4, marginBottom: 8 },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
@@ -723,7 +814,7 @@ const s = StyleSheet.create({
   hintLight: { color: COLORS.inkSoft, textAlign: "center", marginTop: 16, minHeight: 20, fontSize: 14 },
 
   // ---- dark in-car interview screen ----
-  rootDark: { flex: 1, backgroundColor: COLORS.night, paddingHorizontal: 28, paddingVertical: 20 },
+  rootDark: { flex: 1, backgroundColor: COLORS.night, paddingHorizontal: 32, paddingVertical: 20 },
   eyebrowDark: { color: COLORS.sage, fontSize: 12, letterSpacing: 2, fontWeight: "600", marginTop: 8 },
   qWrap: { flex: 1, justifyContent: "center" },
   question: { color: COLORS.moon, fontSize: 30, lineHeight: 42, fontFamily: SERIF },
