@@ -11,7 +11,9 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Shotgun records your voice while you tell your life story, so it can be kept for your family.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "plugins": [
@@ -20,7 +22,8 @@
         {
           "microphonePermission": "Shotgun records your voice while you tell your life story, so it can be kept for your family."
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }
