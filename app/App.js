@@ -81,6 +81,7 @@ export default function App() {
   const lastLoudRef = useRef(0);
   const startedTalkingRef = useRef(false);
   const meterTimer = useRef(null);
+  const soundRef = useRef(null);
   const aliveRef = useRef(true);
   // True only while an interview is actually running. Guards every step of
   // the ask→listen chain so that stopping speech (which resolves pending
@@ -116,6 +117,9 @@ export default function App() {
 
   function stopEverything() {
     Speech.stop();
+    const snd = soundRef.current;
+    soundRef.current = null;
+    if (snd) snd.unloadAsync().catch(() => {});
     if (meterTimer.current) clearInterval(meterTimer.current);
     const rec = recordingRef.current;
     recordingRef.current = null;
@@ -123,7 +127,45 @@ export default function App() {
   }
 
   // ---------- speech out ------------------------------------------------------
-  function speak(text) {
+  // Primary voice: the backend's /tts endpoint (neural, warm). Falls back to
+  // the on-device system voice if the server can't be reached.
+  async function speak(text) {
+    if (!text) return;
+    try {
+      // Playback mode first — with recording mode active, iOS routes audio
+      // to the tiny earpiece speaker instead of the loud one.
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: `${SERVER}/tts?text=${encodeURIComponent(text.slice(0, 1200))}` },
+        { shouldPlay: true }
+      );
+      soundRef.current = sound;
+      await new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(watchdog);
+          resolve();
+        };
+        // Watchdog so a lost status callback can never freeze the loop.
+        const watchdog = setTimeout(finish, 6000 + text.length * 120);
+        sound.setOnPlaybackStatusUpdate((st) => {
+          if (!st.isLoaded || st.didJustFinish) finish();
+        });
+      });
+      soundRef.current = null;
+      await sound.unloadAsync().catch(() => {});
+    } catch {
+      await speakLocal(text);
+    }
+  }
+
+  function speakLocal(text) {
     return new Promise((resolve) => {
       let settled = false;
       const finish = () => {
@@ -134,8 +176,6 @@ export default function App() {
       };
       // Watchdog: expo-speech's completion callbacks occasionally never fire
       // on iOS, which used to freeze the whole loop before the mic opened.
-      // Generous estimate (~10 chars/sec at our rate) so it only trips when
-      // the callback is genuinely lost.
       const watchdog = setTimeout(finish, 2500 + text.length * 100);
       Speech.speak(text, { rate: 0.95, onDone: finish, onStopped: finish, onError: finish });
     });
@@ -162,18 +202,13 @@ export default function App() {
     setPhase("thinking");
     setStatus("Starting…");
     try {
-      // Ask for the mic up front (we're about to need it), and make sure
-      // spoken questions play even if the phone's silent switch is on.
+      // Ask for the mic up front — we're about to need it. (speak() and
+      // beginRecording() each set the right audio mode for their turn.)
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) {
         setPhase("error"); setStatus("Shotgun needs the microphone to hear the answers. Allow it in Settings, then tap to continue.");
         return;
       }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-      });
       const r = await fetch(`${SERVER}/session/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subjectId, subjectName: name, subjectNotes: about }),
