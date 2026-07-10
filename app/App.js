@@ -25,6 +25,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 
 // ---------- tunables --------------------------------------------------------
+// The one production backend every install talks to. Users never see or set
+// this. ⚠️ Set to your deployed backend URL before shipping a build.
+const SERVER_URL = "https://shotgun-production.up.railway.app";
+
 const DEFAULT_SILENCE_MS = 7000;   // long & forgiving — capture the pauses
 const MIN_ANSWER_MS = 1500;        // ignore blips shorter than this
 const METERING_SILENCE_DB = -40;   // below this = "quiet" (tune in real car)
@@ -35,16 +39,18 @@ const COLORS = {
   bone: "#f4efe6", boneDim: "#b9b3a8", ok: "#7fb89a",
 };
 
+const SERVER = SERVER_URL.replace(/\/$/, "");
+
 export default function App() {
   useKeepAwake(); // never let the screen sleep mid-session (in-car essential)
 
   // config
-  const [server, setServer] = useState("");
   const [name, setName] = useState("");
   const [subjectId, setSubjectId] = useState(null);
   const [configured, setConfigured] = useState(false);
   const [silenceMs, setSilenceMs] = useState(DEFAULT_SILENCE_MS);
-  const [showSales, setShowSales] = useState(true); // product/sales screen shows first
+  const [showSales, setShowSales] = useState(true); // funnel shows first
+  const [salesPage, setSalesPage] = useState(0);    // which funnel page
 
   // conversation state machine: setup | asking | listening | thinking | error
   const [phase, setPhase] = useState("setup");
@@ -57,15 +63,17 @@ export default function App() {
   const startedTalkingRef = useRef(false);
   const meterTimer = useRef(null);
   const aliveRef = useRef(true);
+  // An answer that recorded fine but failed to upload — kept so "tap to
+  // retry" actually re-sends it instead of silently re-recording.
+  const pendingUploadRef = useRef(null);
 
   // ---------- boot: restore config ------------------------------------------
   useEffect(() => {
     (async () => {
-      const [s, n, id, sil] = await Promise.all([
-        AsyncStorage.getItem("server"), AsyncStorage.getItem("name"),
+      const [n, id, sil] = await Promise.all([
+        AsyncStorage.getItem("name"),
         AsyncStorage.getItem("subjectId"), AsyncStorage.getItem("silenceMs"),
       ]);
-      if (s) setServer(s);
       if (n) setName(n);
       if (sil) setSilenceMs(Number(sil) || DEFAULT_SILENCE_MS);
       if (id) setSubjectId(id);
@@ -93,41 +101,38 @@ export default function App() {
 
   // ---------- the loop --------------------------------------------------------
   async function startSession() {
-    const cleanServer = server.trim().replace(/\/$/, "");
-    if (!cleanServer) { setStatus("Enter the server address first."); return; }
     let id = subjectId;
     if (!id) {
       id = "subj_" + Math.random().toString(36).slice(2, 10);
       setSubjectId(id);
     }
     await AsyncStorage.multiSet([
-      ["server", cleanServer], ["name", name], ["subjectId", id],
-      ["silenceMs", String(silenceMs)],
+      ["name", name], ["subjectId", id], ["silenceMs", String(silenceMs)],
     ]);
     setConfigured(true);
     setPhase("thinking");
     setStatus("Starting…");
     try {
-      const r = await fetch(`${cleanServer}/session/start`, {
+      const r = await fetch(`${SERVER}/session/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subjectId: id }),
       });
       const data = await r.json();
-      await askAndListen(data.question, data.intro, cleanServer, id);
+      await askAndListen(data.question, data.intro, id);
     } catch {
-      setPhase("error"); setStatus("Couldn't reach the server.");
+      setPhase("error"); setStatus("Couldn't connect. Check your signal and tap to try again.");
     }
   }
 
-  async function askAndListen(q, bridge, srv, id) {
+  async function askAndListen(q, bridge, id) {
     if (!aliveRef.current) return;
     setQuestion(q); setHeard(""); setPhase("asking"); setStatus("");
     if (bridge) await speak(bridge);
     await speak(q);
-    await beginRecording(srv, id);
+    await beginRecording(id);
   }
 
-  async function beginRecording(srv, id) {
+  async function beginRecording(id) {
     try {
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) { setPhase("error"); setStatus("Microphone permission needed."); return; }
@@ -163,7 +168,7 @@ export default function App() {
         // End of turn: they've talked, then gone quiet for the long window.
         if (startedTalkingRef.current && now - lastLoudRef.current >= silenceMs) {
           clearInterval(meterTimer.current);
-          await finishTurn(srv, id);
+          await finishTurn(id);
         }
       }, METER_INTERVAL_MS);
     } catch (e) {
@@ -171,7 +176,7 @@ export default function App() {
     }
   }
 
-  async function finishTurn(srv, id) {
+  async function finishTurn(id) {
     const rec = recordingRef.current;
     recordingRef.current = null;
     if (!rec) return;
@@ -182,34 +187,50 @@ export default function App() {
       uri = rec.getURI();
     } catch { /* fallthrough */ }
     if (!uri) { setPhase("error"); setStatus("Lost the recording — tap to continue."); return; }
+    await uploadAnswer(uri, id);
+  }
 
+  async function uploadAnswer(uri, id) {
+    setPhase("thinking"); setStatus("");
     try {
       const form = new FormData();
       form.append("subjectId", id);
       form.append("audio", { uri, name: "answer.m4a", type: "audio/m4a" });
-      const r = await fetch(`${srv}/session/answer-audio`, { method: "POST", body: form });
+      const r = await fetch(`${SERVER}/session/answer-audio`, { method: "POST", body: form });
       if (!r.ok) throw new Error(String(r.status));
+      pendingUploadRef.current = null;
       const data = await r.json();
       if (data.empty) {
         // Silence with no real speech — just re-open the mic on the same question.
         await speak("I'm still here whenever you're ready.");
-        await beginRecording(srv, id);
+        await beginRecording(id);
         return;
       }
       setHeard(data.transcript || "");
       const lead = data.acknowledgment || data.bridge;
-      await askAndListen(data.question, lead, srv, id);
+      await askAndListen(data.question, lead, id);
     } catch {
+      pendingUploadRef.current = { uri, id };
       setPhase("error");
       setStatus("Couldn't send that answer. It's saved on the phone — tap to retry.");
     }
+  }
+
+  // The one error-recovery button. Resume from wherever things actually broke:
+  // a failed upload re-sends the saved answer; a failed session start
+  // reconnects; otherwise re-open the mic on the current question.
+  function retryFromError() {
+    const pending = pendingUploadRef.current;
+    if (pending) return uploadAnswer(pending.uri, pending.id);
+    if (!question) return startSession();
+    return beginRecording(subjectId);
   }
 
   async function endSession() {
     stopEverything();
     setPhase("thinking"); setStatus("Wrapping up…");
     try {
-      await fetch(`${server.trim().replace(/\/$/, "")}/session/end`, {
+      await fetch(`${SERVER}/session/end`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subjectId }),
       });
@@ -219,96 +240,122 @@ export default function App() {
 
   // ---------- UI --------------------------------------------------------------
 
-  // Sales / product screen — the FIRST thing a prospective buyer sees.
-  // Structured as a long-form sales page: hook → problem → solution →
-  // value stack → price anchor → social proof → risk reversal → urgency → CTA.
-  // NOTE: the CTA currently advances to the setup screen. Once the account
-  // (Sign in with Apple) and payment (Stripe) steps exist, gate them HERE —
-  // Sales → Account → Pay → Setup → Interview.
-  if (!configured && showSales) {
-    return (
-      <SafeAreaView style={s.root}>
-        <StatusBar style="light" />
-        <ScrollView contentContainerStyle={s.salesScroll} showsVerticalScrollIndicator={false}>
-          {/* HERO — big emotional promise + a CTA above the fold */}
+  // Sales funnel — the FIRST thing a prospective buyer sees. One idea per
+  // page, tapped through in order (hook → problem → solution → proof →
+  // paywall), price withheld until value is built. Progress dots up top,
+  // back chevron on every page after the first.
+  // NOTE: the final CTA currently advances to the setup screen. Once the
+  // account (Sign in with Apple) and payment (Stripe) steps exist, gate them
+  // HERE — Funnel → Account → Pay → Setup → Interview.
+  const funnelPages = [
+    {
+      key: "hook",
+      cta: "Start their story",
+      render: () => (
+        <>
           <Text style={s.eyebrow}>SHOTGUN</Text>
           <Text style={s.h1}>Their stories deserve to outlive them.</Text>
           <Text style={s.subhead}>
             Shotgun turns easy, everyday conversations into a beautifully written
             biography — told in their own voice, and kept for good.
           </Text>
-          <Pressable style={s.primary} onPress={() => setShowSales(false)}>
-            <Text style={s.primaryText}>Start their story</Text>
-          </Pressable>
-          <Text style={s.ctaSub}>$500 · one time · everything included</Text>
-
-          {/* PROBLEM — agitate the real cost of waiting (PAS) */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>One day, the stories stop.</Text>
-            <Text style={s.body}>
-              Everyone you love is carrying a thousand stories no one has written
-              down — how they met, the year everything changed, the advice they'd
-              give if you ever asked. Then one day it all goes quiet. Not because
-              we didn't care. Because we never quite got around to asking.
-            </Text>
-          </View>
-
-          {/* SOLUTION — 3 steps, to make it feel effortless */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>So we made asking effortless.</Text>
-
-            <View style={s.step}>
-              <Text style={s.stepNum}>1</Text>
-              <View style={s.stepBody}>
-                <Text style={s.stepTitle}>Just talk.</Text>
-                <Text style={s.stepText}>
-                  Mount the phone and drive. Shotgun rides along and asks the
-                  questions a great biographer would — one at a time, warm and
-                  unhurried.
-                </Text>
-              </View>
-            </View>
-
-            <View style={s.step}>
-              <Text style={s.stepNum}>2</Text>
-              <View style={s.stepBody}>
-                <Text style={s.stepTitle}>We chase the real story.</Text>
-                <Text style={s.stepText}>
-                  It listens for the moments that matter — the people, the turning
-                  points, the things they've never told anyone — and keeps every
-                  word in their own voice.
-                </Text>
-              </View>
-            </View>
-
-            <View style={s.step}>
-              <Text style={s.stepNum}>3</Text>
-              <View style={s.stepBody}>
-                <Text style={s.stepTitle}>You receive their biography.</Text>
-                <Text style={s.stepText}>
-                  We turn those conversations into a professionally written life
-                  story, delivered to you — a keepsake for your whole family.
-                </Text>
-              </View>
+        </>
+      ),
+    },
+    {
+      key: "problem",
+      cta: "Continue",
+      render: () => (
+        <>
+          <Text style={s.h1}>One day, the stories stop.</Text>
+          <Text style={s.subhead}>
+            Everyone you love is carrying a thousand stories no one has written
+            down — how they met, the year everything changed, the advice they'd
+            give if you ever asked. Then one day it all goes quiet. Not because
+            we didn't care. Because we never quite got around to asking.
+          </Text>
+        </>
+      ),
+    },
+    {
+      key: "solution",
+      cta: "Continue",
+      render: () => (
+        <>
+          <Text style={s.h1}>So we made asking effortless.</Text>
+          <View style={s.step}>
+            <Text style={s.stepNum}>1</Text>
+            <View style={s.stepBody}>
+              <Text style={s.stepTitle}>Just talk.</Text>
+              <Text style={s.stepText}>
+                Mount the phone and drive. Shotgun rides along and asks the
+                questions a great biographer would — one at a time, warm and
+                unhurried.
+              </Text>
             </View>
           </View>
-
-          {/* VALUE STACK — everything included */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>Everything included</Text>
-            {[
-              "A professionally written biography of their life",
-              "Every conversation preserved in their own voice",
-              "Guided interviews that draw out the untold stories",
-              "A keepsake your family keeps for generations",
-            ].map((b) => (
-              <View style={s.benefit} key={b}>
-                <Text style={s.benefitDot}>✓</Text>
-                <Text style={s.benefitText}>{b}</Text>
-              </View>
-            ))}
+          <View style={s.step}>
+            <Text style={s.stepNum}>2</Text>
+            <View style={s.stepBody}>
+              <Text style={s.stepTitle}>We chase the real story.</Text>
+              <Text style={s.stepText}>
+                It listens for the moments that matter — the people, the turning
+                points, the things they've never told anyone — and keeps every
+                word in their own voice.
+              </Text>
+            </View>
           </View>
-
+          <View style={s.step}>
+            <Text style={s.stepNum}>3</Text>
+            <View style={s.stepBody}>
+              <Text style={s.stepTitle}>You receive their biography.</Text>
+              <Text style={s.stepText}>
+                We turn those conversations into a professionally written life
+                story, delivered to you — a keepsake for your whole family.
+              </Text>
+            </View>
+          </View>
+        </>
+      ),
+    },
+    {
+      key: "proof",
+      cta: "Continue",
+      render: () => (
+        <>
+          <Text style={s.h1}>What families say</Text>
+          {/* SOCIAL PROOF — PLACEHOLDER. Replace with real, verified quotes before
+              launch. Never ship fabricated testimonials (dishonest + App Store risk). */}
+          {[
+            { q: "I have my father's voice telling the story of the day I was born. I'll have it forever.", who: "Sarah, a daughter (sample)" },
+            { q: "My dad would never sit for an interview. But he'll talk for an hour in the car. This got stories out of him I'd never heard.", who: "Michael, a son (sample)" },
+          ].map((t) => (
+            <View style={s.quoteCard} key={t.who}>
+              <Text style={s.quoteText}>“{t.q}”</Text>
+              <Text style={s.quoteAttr}>— {t.who}</Text>
+            </View>
+          ))}
+        </>
+      ),
+    },
+    {
+      key: "paywall",
+      cta: "Start their story",
+      footnote: "Secure checkout · $500 one time",
+      render: () => (
+        <>
+          <Text style={s.h1}>Everything included</Text>
+          {[
+            "A professionally written biography of their life",
+            "Every conversation preserved in their own voice",
+            "Guided interviews that draw out the untold stories",
+            "A keepsake your family keeps for generations",
+          ].map((b) => (
+            <View style={s.benefit} key={b}>
+              <Text style={s.benefitDot}>✓</Text>
+              <Text style={s.benefitText}>{b}</Text>
+            </View>
+          ))}
           {/* PRICE ANCHOR — expensive alternative, crossed out, then the price */}
           {/* NOTE: only keep the $10,000 comparison if it's a defensible claim. */}
           <View style={s.priceCard}>
@@ -316,22 +363,6 @@ export default function App() {
             <Text style={s.priceBig}>$500</Text>
             <Text style={s.priceSub}>One time. Everything above included.</Text>
           </View>
-
-          {/* SOCIAL PROOF — PLACEHOLDER. Replace with real, verified quotes before
-              launch. Never ship fabricated testimonials (dishonest + App Store risk). */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>What families say</Text>
-            {[
-              { q: "I have my father's voice telling the story of the day I was born. I'll have it forever.", who: "Sarah, a daughter (sample)" },
-              { q: "My dad would never sit for an interview. But he'll talk for an hour in the car. This got stories out of him I'd never heard.", who: "Michael, a son (sample)" },
-            ].map((t) => (
-              <View style={s.quoteCard} key={t.who}>
-                <Text style={s.quoteText}>“{t.q}”</Text>
-                <Text style={s.quoteAttr}>— {t.who}</Text>
-              </View>
-            ))}
-          </View>
-
           {/* RISK REVERSAL — PLACEHOLDER. Only keep if you will honor this refund. */}
           <View style={s.guaranteeCard}>
             <Text style={s.guaranteeText}>
@@ -339,18 +370,45 @@ export default function App() {
               we'll refund every cent.
             </Text>
           </View>
+        </>
+      ),
+    },
+  ];
 
-          {/* URGENCY — gentle, true to the product */}
-          <Text style={s.urgency}>
-            The best time to start was years ago.{"\n"}The next best time is this weekend.
-          </Text>
+  if (!configured && showSales) {
+    const page = funnelPages[salesPage];
+    const isLast = salesPage === funnelPages.length - 1;
+    return (
+      <SafeAreaView style={s.root}>
+        <StatusBar style="light" />
+        {/* Header: back chevron (after page 1) + progress dots */}
+        <View style={s.funnelHeader}>
+          {salesPage > 0 ? (
+            <Pressable style={s.backBtn} hitSlop={12} onPress={() => setSalesPage(salesPage - 1)}>
+              <Text style={s.backText}>‹</Text>
+            </Pressable>
+          ) : (
+            <View style={s.backBtn} />
+          )}
+          <View style={s.dots}>
+            {funnelPages.map((p, i) => (
+              <View key={p.key} style={[s.dot, i === salesPage && s.dotActive]} />
+            ))}
+          </View>
+          <View style={s.backBtn} />
+        </View>
 
-          {/* FINAL CTA — ask again once value is established */}
-          <Pressable style={[s.primary, { marginTop: 22 }]} onPress={() => setShowSales(false)}>
-            <Text style={s.primaryText}>Start their story</Text>
-          </Pressable>
-          <Text style={s.footnote}>Secure checkout · $500 one time</Text>
+        <ScrollView contentContainerStyle={s.funnelScroll} showsVerticalScrollIndicator={false}>
+          {page.render()}
         </ScrollView>
+
+        <Pressable
+          style={s.primary}
+          onPress={() => (isLast ? setShowSales(false) : setSalesPage(salesPage + 1))}
+        >
+          <Text style={s.primaryText}>{page.cta}</Text>
+        </Pressable>
+        {!!page.footnote && <Text style={s.footnote}>{page.footnote}</Text>}
       </SafeAreaView>
     );
   }
@@ -359,17 +417,19 @@ export default function App() {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="light" />
+        <View style={s.funnelHeader}>
+          <Pressable style={s.backBtn} hitSlop={12}
+            onPress={() => { setStatus(""); setShowSales(true); }}>
+            <Text style={s.backText}>‹</Text>
+          </Pressable>
+          <View style={s.backBtn} />
+        </View>
         <View style={s.panel}>
           <Text style={s.h2}>Set up the interview</Text>
           <Text style={s.p}>Do this once, before driving. Then it's just talking.</Text>
           <Text style={s.label}>Who's telling their story?</Text>
           <TextInput style={s.input} value={name} onChangeText={setName}
             placeholder="e.g. Dad" placeholderTextColor={COLORS.boneDim} />
-          <Text style={s.label}>Server address</Text>
-          <TextInput style={s.input} value={server} onChangeText={setServer}
-            autoCapitalize="none" autoCorrect={false} keyboardType="url"
-            placeholder="https://your-backend.up.railway.app"
-            placeholderTextColor={COLORS.boneDim} />
           <Pressable style={s.primary} onPress={startSession}>
             <Text style={s.primaryText}>Start talking</Text>
           </Pressable>
@@ -400,7 +460,7 @@ export default function App() {
         (phase === "listening" ? "Just talk. Long pauses are fine — I'll wait." :
          phase === "asking" ? "" : "")}</Text>
       {phase === "error" && (
-        <Pressable style={s.primary} onPress={() => beginRecording(server.trim().replace(/\/$/, ""), subjectId)}>
+        <Pressable style={s.primary} onPress={retryFromError}>
           <Text style={s.primaryText}>Tap to continue</Text>
         </Pressable>
       )}
@@ -423,14 +483,17 @@ const s = StyleSheet.create({
   primary: { backgroundColor: COLORS.lamp, borderRadius: 14, padding: 16, marginTop: 18, alignItems: "center" },
   primaryText: { color: COLORS.duskDeep, fontWeight: "700", fontSize: 17 },
 
-  // ---- sales / product screen ----
-  salesScroll: { paddingBottom: 44 },
+  // ---- sales funnel ----
+  funnelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginTop: 4, marginBottom: 8 },
+  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  backText: { color: COLORS.bone, fontSize: 34, lineHeight: 38, marginTop: -4 },
+  dots: { flexDirection: "row", gap: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(244,239,230,0.25)" },
+  dotActive: { backgroundColor: COLORS.lamp },
+  funnelScroll: { flexGrow: 1, justifyContent: "center", paddingBottom: 24 },
   h1: { color: COLORS.bone, fontSize: 34, lineHeight: 42, fontWeight: "700", marginTop: 12 },
   subhead: { color: COLORS.boneDim, fontSize: 17, lineHeight: 25, marginTop: 14 },
-  ctaSub: { color: COLORS.boneDim, fontSize: 13, textAlign: "center", marginTop: 10 },
-  section: { marginTop: 36 },
-  sectionTitle: { color: COLORS.bone, fontSize: 22, fontWeight: "600", marginBottom: 12 },
-  body: { color: COLORS.boneDim, fontSize: 16, lineHeight: 24 },
   step: { flexDirection: "row", marginTop: 18 },
   stepNum: { color: COLORS.lamp, fontSize: 18, fontWeight: "800", width: 28 },
   stepBody: { flex: 1 },
@@ -451,8 +514,6 @@ const s = StyleSheet.create({
   guaranteeCard: { marginTop: 22, backgroundColor: "rgba(127,184,154,0.1)", borderRadius: 14,
     padding: 18, borderWidth: 1, borderColor: "rgba(127,184,154,0.5)" },
   guaranteeText: { color: COLORS.bone, fontSize: 16, lineHeight: 23 },
-  urgency: { color: COLORS.bone, fontSize: 19, lineHeight: 27, fontWeight: "500",
-    marginTop: 40, textAlign: "center" },
   footnote: { color: COLORS.boneDim, fontSize: 12, textAlign: "center", marginTop: 12 },
   eyebrow: { color: COLORS.lamp, fontSize: 12, letterSpacing: 2, fontWeight: "600", marginTop: 8 },
   qWrap: { flex: 1, justifyContent: "center" },
