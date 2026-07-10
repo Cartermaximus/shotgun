@@ -26,8 +26,8 @@ import { StatusBar } from "expo-status-bar";
 
 // ---------- tunables --------------------------------------------------------
 // The one production backend every install talks to. Users never see or set
-// this. ⚠️ Set to your deployed backend URL before shipping a build.
-const SERVER_URL = "https://shotgun-production.up.railway.app";
+// this.
+const SERVER_URL = "https://shotgun-backend-production.up.railway.app";
 
 const DEFAULT_SILENCE_MS = 7000;   // long & forgiving — capture the pauses
 const MIN_ANSWER_MS = 1500;        // ignore blips shorter than this
