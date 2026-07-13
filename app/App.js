@@ -21,8 +21,11 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  SafeAreaView, ScrollView, View, Text, Pressable, TextInput, StyleSheet, AppState,
+  ScrollView, View, Text, Pressable, TextInput, StyleSheet, AppState,
 } from "react-native";
+// NOT react-native's SafeAreaView — that one overwrites style padding with
+// the device insets (0 on the sides), which erased every side margin.
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 import * as Speech from "expo-speech";
 import { useKeepAwake } from "expo-keep-awake";
@@ -72,6 +75,14 @@ const CHAPTERS = [
 ];
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Shotgun />
+    </SafeAreaProvider>
+  );
+}
+
+function Shotgun() {
   useKeepAwake(); // never let the screen sleep mid-session (in-car essential)
 
   // config
