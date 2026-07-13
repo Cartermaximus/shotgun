@@ -1,391 +1,73 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Your Story</title>
-<style>
-  /* ---- design tokens -------------------------------------------------
-     Brief: an aging parent uses this by voice, maybe in a car. The page
-     should feel like a quiet passenger seat at dusk, not an app. One thing
-     to do, enormous and obvious. Warmth over cleverness.
-     Palette: deep dusk indigo ground, warm lamp-amber as the single accent
-     (the dashboard glow), bone-white type. Type: a humanist serif for the
-     questions (someone speaking to you), a plain sans for the few labels. */
-  :root {
-    --dusk: #1c2230;
-    --dusk-deep: #151a26;
-    --lamp: #e8b465;       /* the one accent — warm dashboard light */
-    --lamp-soft: #f0cd96;
-    --bone: #f4efe6;
-    --bone-dim: #b9b3a8;
-    --ok: #7fb89a;
-    --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-    --sans: ui-sans-serif, -apple-system, "Helvetica Neue", system-ui, sans-serif;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; }
-  body {
-    background:
-      radial-gradient(120% 80% at 50% -10%, #243049 0%, var(--dusk) 45%, var(--dusk-deep) 100%);
-    color: var(--bone);
-    font-family: var(--sans);
-    min-height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    overflow-x: hidden;
-  }
-  .wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: clamp(20px, 5vw, 40px);
-    max-width: 760px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  .eyebrow {
-    font-size: 0.82rem;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--lamp);
-    font-weight: 600;
-    margin-bottom: 2px;
-  }
-  .eyebrow .who { color: var(--bone-dim); }
-
-  /* The question — the voice of the interviewer, set large and serif so it
-     reads like someone talking, not UI text. */
-  .question {
-    font-family: var(--serif);
-    font-size: clamp(1.7rem, 6vw, 2.6rem);
-    line-height: 1.28;
-    font-weight: 500;
-    margin: clamp(24px, 6vh, 48px) 0;
-    flex: 1;
-    display: flex;
-    align-items: center;
-    min-height: 30vh;
-    transition: opacity .35s ease;
-  }
-  .question.thinking { opacity: .4; }
-
-  /* What we heard back, quietly confirmed under the button. */
-  .heard {
-    min-height: 1.6em;
-    font-size: 1rem;
-    color: var(--bone-dim);
-    text-align: center;
-    margin-bottom: 14px;
-    transition: opacity .3s;
-  }
-  .heard b { color: var(--bone); font-weight: 500; }
-
-  /* ---- the signature: one big breathing talk button --------------- */
-  .dock { padding-bottom: clamp(20px, 5vh, 48px); display: flex; flex-direction: column; align-items: center; }
-  .talk {
-    position: relative;
-    width: clamp(150px, 46vw, 210px);
-    height: clamp(150px, 46vw, 210px);
-    border-radius: 50%;
-    border: none;
-    cursor: pointer;
-    background: radial-gradient(circle at 50% 38%, var(--lamp-soft), var(--lamp) 62%, #c8923f 100%);
-    color: var(--dusk-deep);
-    font-family: var(--sans);
-    font-size: 1.3rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    box-shadow: 0 0 0 0 rgba(232,180,101,.55), 0 14px 40px rgba(0,0,0,.4);
-    transition: transform .15s ease, box-shadow .3s ease;
-    touch-action: manipulation;
-  }
-  .talk:active { transform: scale(.97); }
-  .talk:disabled { opacity: .45; cursor: default; }
-  .talk.listening {
-    background: radial-gradient(circle at 50% 38%, #9fd9bd, var(--ok) 62%, #5a9b7d 100%);
-    animation: breathe 2.2s ease-in-out infinite;
-  }
-  @keyframes breathe {
-    0%,100% { box-shadow: 0 0 0 0 rgba(127,184,154,.55), 0 14px 40px rgba(0,0,0,.4); }
-    50%     { box-shadow: 0 0 0 26px rgba(127,184,154,0), 0 14px 40px rgba(0,0,0,.4); }
-  }
-  .talk .sub { display:block; font-size: .8rem; font-weight: 600; opacity:.7; margin-top: 4px; text-transform: uppercase; letter-spacing:.12em; }
-
-  .hint { margin-top: 22px; font-size: .95rem; color: var(--bone-dim); text-align center; text-align: center; min-height: 1.4em; }
-
-  .repeat {
-    margin-top: 18px; background: none; border: 1px solid rgba(244,239,230,.22);
-    color: var(--bone-dim); border-radius: 999px; padding: 9px 18px; font-size: .9rem;
-    font-family: var(--sans); cursor: pointer;
-  }
-  .repeat:active { background: rgba(244,239,230,.06); }
-
-  /* setup + safety screens */
-  .panel { background: rgba(0,0,0,.22); border: 1px solid rgba(244,239,230,.1); border-radius: 18px; padding: 22px; margin-top: auto; }
-  .panel h2 { font-family: var(--serif); font-weight: 500; margin: 0 0 10px; font-size: 1.4rem; }
-  .panel p { color: var(--bone-dim); line-height: 1.5; margin: 0 0 16px; font-size: 1rem; }
-  .panel label { display:block; font-size:.8rem; letter-spacing:.1em; text-transform:uppercase; color: var(--lamp); margin: 0 0 6px; }
-  .panel input {
-    width:100%; padding:14px; border-radius:12px; border:1px solid rgba(244,239,230,.2);
-    background: rgba(0,0,0,.25); color: var(--bone); font-size:1.05rem; font-family: var(--sans);
-  }
-  .btn-primary {
-    width:100%; margin-top:18px; padding:16px; border:none; border-radius:14px;
-    background: var(--lamp); color: var(--dusk-deep); font-size:1.1rem; font-weight:700;
-    font-family: var(--sans); cursor:pointer;
-  }
-  .btn-primary:active { transform: scale(.99); }
-  .typefallback { width:100%; margin-top:14px; padding:14px; border-radius:12px;
-    border:1px solid rgba(244,239,230,.2); background: rgba(0,0,0,.25); color:var(--bone);
-    font-size:1.05rem; font-family:var(--sans); resize:none; }
-  .linkish { background:none;border:none;color:var(--lamp);text-decoration:underline;cursor:pointer;font-size:.95rem;font-family:var(--sans);margin-top:12px; }
-  .hidden { display: none !important; }
-  @media (prefers-reduced-motion: reduce) {
-    .talk.listening { animation: none; }
-  }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Family Biographer — their stories, told in their own voice, kept for good</title>
+  <meta name="description" content="Family Biographer turns easy, everyday conversations into a professionally written biography of someone you love — told in their own voice and kept for your family, for good. $500, one time.">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="wrap">
+<main>
+  <div class="eyebrow">FAMILY BIOGRAPHER</div>
+  <h1>Their stories deserve to outlive them.</h1>
+  <p class="sub">Family Biographer turns easy, everyday conversations into a beautifully
+  written biography — told in their own voice, and kept for good.</p>
+  <a class="btn" href="mailto:support@familybiographer.com?subject=Early%20access">Get early access</a>
+  <p class="updated">Coming to the App Store · $500 · one time · everything included</p>
 
-  <!-- SETUP: shown once, configured by the buyer (the adult child) -->
-  <section id="setup" class="panel">
-    <h2>Set up the interview</h2>
-    <p>This is for capturing someone's life story — just by talking. Enter a name to begin. You only do this once on this phone.</p>
-    <label for="name">Who's telling their story?</label>
-    <input id="name" type="text" placeholder="e.g. Dad" autocomplete="off" />
-    <label for="server" style="margin-top:16px;">Server address</label>
-    <input id="server" type="url" placeholder="https://your-backend.up.railway.app" autocomplete="off" />
-    <button class="btn-primary" id="beginSetup">Continue</button>
-  </section>
+  <h2>One day, the stories stop.</h2>
+  <p>Everyone you love is carrying a thousand stories no one has written down —
+  how they met, the year everything changed, the advice they'd give if you ever
+  asked. Then one day it all goes quiet. Not because we didn't care. Because we
+  never quite got around to asking.</p>
 
-  <!-- SAFETY: one-time note before the first session -->
-  <section id="safety" class="panel hidden">
-    <h2>Before you start</h2>
-    <p>Get comfortable and set this up <b>before</b> you start driving. Once it begins, you only need to talk — no need to look at the screen. If you ever want to fix something, pull over first.</p>
-    <p>Tap the big button, wait for the question, then tap it again and just talk. Say whatever comes to mind. There are no wrong answers.</p>
-    <button class="btn-primary" id="beginSession">I'm ready</button>
-  </section>
+  <h2>So we made asking effortless.</h2>
+  <ol class="steps">
+    <li><span><b>Just talk.</b> Mount the phone and drive. Family Biographer rides
+    along and asks the questions a great biographer would — one at a time, warm
+    and unhurried.</span></li>
+    <li><span><b>We chase the real story.</b> It listens for the moments that
+    matter — the people, the turning points, the things they've never told
+    anyone — and keeps every word in their own voice.</span></li>
+    <li><span><b>You receive their biography.</b> Those conversations become a
+    professionally written life story, delivered to you — a keepsake for your
+    whole family.</span></li>
+  </ol>
 
-  <!-- INTERVIEW -->
-  <section id="interview" class="hidden" style="display:flex; flex-direction:column; flex:1;">
-    <div class="eyebrow">Telling your story <span class="who" id="who"></span></div>
-    <div class="question" id="question">…</div>
+  <h2>Everything included</h2>
+  <ul class="check">
+    <li>A professionally written biography of their life</li>
+    <li>Every conversation preserved in their own voice</li>
+    <li>Guided interviews that draw out the untold stories</li>
+    <li>A keepsake your family keeps for generations</li>
+  </ul>
 
-    <div class="dock">
-      <div class="heard" id="heard"></div>
-      <button class="talk" id="talk" disabled>
-        Tap to talk
-        <span class="sub" id="talkSub">getting ready…</span>
-      </button>
-      <div class="hint" id="hint"></div>
-      <button class="repeat hidden" id="repeat">↻ Say the question again</button>
-      <textarea id="typeFallback" class="typefallback hidden" rows="3" placeholder="Or type your answer here, then tap below…"></textarea>
-      <button class="btn-primary hidden" id="sendTyped" style="margin-top:10px;">Send answer</button>
-      <button class="linkish" id="toggleType">Trouble talking? Type instead</button>
-    </div>
-  </section>
+  <div class="card price-card">
+    <div class="price-strike">Ghostwritten memoirs run $10,000 and up</div>
+    <div class="price serif">$500</div>
+    <p>One time. Everything above included.</p>
+  </div>
 
-</div>
+  <div class="card guarantee">
+    <p><strong>Love it, or it's free.</strong> If your first conversations don't
+    move you, we'll refund every cent. <a href="refunds.html">Refund policy</a></p>
+  </div>
 
-<script>
-(function () {
-  "use strict";
+  <h2>Made to give</h2>
+  <p>Most people buy Family Biographer for a parent or grandparent. You send one
+  link; their phone signs itself in with a six-letter code. No account to
+  create, no password to remember, nothing to learn — they just answer
+  questions out loud.</p>
 
-  // ---- config persisted on the device --------------------------------
-  const cfg = {
-    get name()   { return localStorage.getItem("shotgun_name") || ""; },
-    set name(v)  { localStorage.setItem("shotgun_name", v); },
-    get server() { return (localStorage.getItem("shotgun_server") || "").replace(/\/$/, ""); },
-    set server(v){ localStorage.setItem("shotgun_server", v.replace(/\/$/, "")); },
-    get subjectId() {
-      let id = localStorage.getItem("shotgun_subject");
-      if (!id) { id = "subj_" + Math.random().toString(36).slice(2, 10); localStorage.setItem("shotgun_subject", id); }
-      return id;
-    },
-    get seenSafety() { return localStorage.getItem("shotgun_safety") === "1"; },
-    set seenSafety(v){ localStorage.setItem("shotgun_safety", v ? "1" : ""); }
-  };
+  <p class="sub" style="margin-top:56px; text-align:center;">
+  The best time to start was years ago.<br>The next best time is this weekend.</p>
+  <p style="text-align:center;"><a class="btn" href="mailto:support@familybiographer.com?subject=Early%20access">Get early access</a></p>
 
-  const $ = (id) => document.getElementById(id);
-  const screens = { setup: $("setup"), safety: $("safety"), interview: $("interview") };
-  function show(name) {
-    for (const k in screens) screens[k].classList.toggle("hidden", k !== name);
-  }
-
-  // ---- speech: TTS out, recognition in --------------------------------
-  const synth = window.speechSynthesis;
-  function speak(text, onend) {
-    if (!synth) { if (onend) onend(); return; }
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.96; u.pitch = 1.0;
-    if (onend) u.onend = onend;
-    synth.speak(u);
-  }
-
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const speechSupported = !!SR;
-  let recog = null, finalText = "", listening = false;
-
-  function buildRecognizer() {
-    if (!SR) return null;
-    const r = new SR();
-    r.lang = "en-US";
-    r.continuous = true;
-    r.interimResults = true;
-    r.onresult = (e) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t + " ";
-        else interim += t;
-      }
-      $("heard").innerHTML = "<b>" + (finalText + interim).trim() + "</b>";
-    };
-    r.onerror = () => { /* handled on stop */ };
-    r.onend = () => { if (listening) { try { r.start(); } catch (_) {} } };
-    return r;
-  }
-
-  // ---- talk button state machine --------------------------------------
-  const talk = $("talk"), talkSub = $("talkSub"), hint = $("hint");
-  let busy = false;
-
-  function setTalk(label, sub, opts) {
-    opts = opts || {};
-    talk.firstChild.textContent = label;
-    talkSub.textContent = sub || "";
-    talk.disabled = !!opts.disabled;
-    talk.classList.toggle("listening", !!opts.listening);
-  }
-
-  function askQuestion(text, bridge) {
-    $("question").classList.remove("thinking");
-    $("question").textContent = text;
-    $("repeat").classList.remove("hidden");
-    const intro = bridge ? bridge + " " : "";
-    setTalk("…", "listen", { disabled: true });
-    hint.textContent = "";
-    speak(intro + text, () => {
-      setTalk("Tap to talk", "your turn", { disabled: false });
-    });
-  }
-
-  function startListening() {
-    if (!speechSupported) { enableTypeMode(true); return; }
-    finalText = ""; $("heard").innerHTML = "";
-    recog = recog || buildRecognizer();
-    listening = true;
-    try { recog.start(); } catch (_) {}
-    setTalk("Tap when done", "listening…", { listening: true });
-    hint.textContent = "Take your time. Tap the button when you've finished.";
-  }
-
-  async function stopAndSend() {
-    listening = false;
-    try { recog && recog.stop(); } catch (_) {}
-    const answer = finalText.trim();
-    if (!answer) {
-      setTalk("Tap to talk", "your turn", {});
-      hint.textContent = "I didn't catch that — tap and try again.";
-      return;
-    }
-    await sendAnswer(answer);
-  }
-
-  // ---- backend calls ---------------------------------------------------
-  async function api(path, body) {
-    const res = await fetch(cfg.server + path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error("server " + res.status);
-    return res.json();
-  }
-
-  async function sendAnswer(answer) {
-    busy = true;
-    $("heard").innerHTML = "<b>" + answer + "</b>";
-    $("question").classList.add("thinking");
-    setTalk("…", "thinking", { disabled: true });
-    hint.textContent = "";
-    try {
-      const data = await api("/session/answer", { subjectId: cfg.subjectId, text: answer });
-      busy = false;
-      setTimeout(() => { $("heard").innerHTML = ""; }, 1500);
-      askQuestion(data.question, data.bridge);
-    } catch (e) {
-      busy = false;
-      $("question").classList.remove("thinking");
-      hint.textContent = "Couldn't reach the server. Check the connection and tap to try again.";
-      setTalk("Tap to talk", "retry", {});
-    }
-  }
-
-  async function startSession() {
-    show("interview");
-    $("who").textContent = cfg.name ? "· " + cfg.name : "";
-    setTalk("…", "getting ready…", { disabled: true });
-    try {
-      const data = await api("/session/start", { subjectId: cfg.subjectId });
-      askQuestion(data.question);
-    } catch (e) {
-      $("question").textContent = "I couldn't reach the server.";
-      hint.textContent = "Double-check the server address in setup.";
-    }
-  }
-
-  // ---- typing fallback -------------------------------------------------
-  function enableTypeMode(force) {
-    $("typeFallback").classList.remove("hidden");
-    $("sendTyped").classList.remove("hidden");
-    if (force) hint.textContent = "Speaking isn't available on this browser, so you can type instead.";
-  }
-  $("toggleType").addEventListener("click", () => enableTypeMode(false));
-  $("sendTyped").addEventListener("click", () => {
-    const v = $("typeFallback").value.trim();
-    if (!v || busy) return;
-    $("typeFallback").value = "";
-    sendAnswer(v);
-  });
-
-  // ---- wiring ----------------------------------------------------------
-  talk.addEventListener("click", () => {
-    if (talk.disabled || busy) return;
-    if (listening) stopAndSend();
-    else startListening();
-  });
-  $("repeat").addEventListener("click", () => {
-    if (listening || busy) return;
-    speak($("question").textContent);
-  });
-
-  $("beginSetup").addEventListener("click", () => {
-    const name = $("name").value.trim();
-    const server = $("server").value.trim();
-    if (!server) { $("server").focus(); return; }
-    cfg.name = name; cfg.server = server;
-    show(cfg.seenSafety ? "interview" : "safety");
-    if (cfg.seenSafety) startSession();
-  });
-  $("beginSession").addEventListener("click", () => {
-    cfg.seenSafety = true;
-    startSession();
-  });
-
-  // ---- boot ------------------------------------------------------------
-  if (!speechSupported) { /* user will see type fallback once in interview */ }
-  if (cfg.server) {
-    $("name").value = cfg.name;
-    $("server").value = cfg.server;
-  }
-  show("setup");
-})();
-</script>
+  <footer>
+    <p>Family Biographer · <a href="mailto:support@familybiographer.com">support@familybiographer.com</a></p>
+    <p><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> · <a href="refunds.html">Refunds</a></p>
+  </footer>
+</main>
 </body>
 </html>

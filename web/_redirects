@@ -1,0 +1,3 @@
+# Cloudflare Pages redirects
+# Gift links live on the brand domain but are served by the backend.
+/gift/* https://shotgun-backend-production.up.railway.app/gift/:splat 302
