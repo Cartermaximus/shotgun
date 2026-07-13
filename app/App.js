@@ -22,6 +22,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ScrollView, View, Text, Pressable, TextInput, StyleSheet, AppState, Share,
+  KeyboardAvoidingView,
 } from "react-native";
 import * as Linking from "expo-linking";
 // NOT react-native's SafeAreaView — that one overwrites style padding with
@@ -659,6 +660,7 @@ function FamilyBiographer() {
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
+        <KeyboardAvoidingView style={s.kav} behavior="padding">
         <ScrollView contentContainerStyle={s.homeScroll} showsVerticalScrollIndicator={false}>
           <Text style={s.eyebrow}>FAMILY BIOGRAPHER</Text>
           <Text style={s.h1}>{name ? `${name}'s story so far` : "The story so far"}</Text>
@@ -702,6 +704,7 @@ function FamilyBiographer() {
               : `Signed in as ${account.email}`}
           </Text>
         )}
+      </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -711,6 +714,7 @@ function FamilyBiographer() {
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
+        <KeyboardAvoidingView style={s.kav} behavior="padding">
         <View style={s.funnelHeader}>
           <Pressable style={s.backBtn} hitSlop={12}
             onPress={() => { setStatus(""); setView(null); setShowSales(true); }}>
@@ -734,6 +738,7 @@ function FamilyBiographer() {
           </Pressable>
           {!!status && <Text style={s.hintLight}>{status}</Text>}
         </ScrollView>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -743,6 +748,7 @@ function FamilyBiographer() {
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
+        <KeyboardAvoidingView style={s.kav} behavior="padding">
         <View style={s.funnelHeader}>
           <Pressable style={s.backBtn} hitSlop={12}
             onPress={() => { setStatus(""); setGiftResult(null); setView(stories.length ? "home" : null); }}>
@@ -789,6 +795,7 @@ function FamilyBiographer() {
             {!!status && <Text style={s.hintLight}>{status}</Text>}
           </View>
         </ScrollView>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -799,6 +806,7 @@ function FamilyBiographer() {
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
+        <KeyboardAvoidingView style={s.kav} behavior="padding">
         <View style={s.funnelHeader}>
           <Pressable style={s.backBtn} hitSlop={12}
             onPress={() => { setStatus(""); setView(null); setShowSales(true); }}>
@@ -846,6 +854,7 @@ function FamilyBiographer() {
             {!!status && <Text style={s.hintLight}>{status}</Text>}
           </View>
         </ScrollView>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -856,6 +865,7 @@ function FamilyBiographer() {
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
+        <KeyboardAvoidingView style={s.kav} behavior="padding">
         {/* Header: back chevron (after page 1) + progress dots */}
         <View style={s.funnelHeader}>
           {salesPage > 0 ? (
@@ -895,6 +905,7 @@ function FamilyBiographer() {
             <Text style={s.homeSettingsText}>I have a gift code</Text>
           </Pressable>
         )}
+      </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -903,6 +914,7 @@ function FamilyBiographer() {
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
+        <KeyboardAvoidingView style={s.kav} behavior="padding">
         <View style={s.funnelHeader}>
           <Pressable style={s.backBtn} hitSlop={12}
             onPress={() => {
@@ -936,6 +948,7 @@ function FamilyBiographer() {
             {!!status && <Text style={s.hintLight}>{status}</Text>}
           </View>
         </ScrollView>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -978,6 +991,7 @@ function FamilyBiographer() {
     return (
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
+        <KeyboardAvoidingView style={s.kav} behavior="padding">
         <View style={s.funnelHeader}>
           <Pressable style={s.backBtn} hitSlop={12}
             onPress={() => (briefPage > 0 ? setBriefPage(briefPage - 1) : setConfigured(false))}>
@@ -1007,6 +1021,7 @@ function FamilyBiographer() {
           onPress={() => (isLastBrief ? startSession() : setBriefPage(briefPage + 1))}>
           <Text style={s.primaryText}>{bp.cta}</Text>
         </Pressable>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -1047,6 +1062,7 @@ function FamilyBiographer() {
 }
 
 const s = StyleSheet.create({
+  kav: { flex: 1 },
   // ---- light chrome (funnel + setup + briefing + home) ----
   rootLight: { flex: 1, backgroundColor: COLORS.paper, paddingHorizontal: 32, paddingVertical: 20 },
 
