@@ -1,4 +1,4 @@
-// App.js — Shotgun native client (v1, conversation mode)
+// App.js — Family Biographer native client (v1, conversation mode)
 //
 // The in-car experience (spec §5.1, updated per our design decisions):
 //   - App open on a mounted phone, screen kept awake.
@@ -78,12 +78,12 @@ const CHAPTERS = [
 export default function App() {
   return (
     <SafeAreaProvider>
-      <Shotgun />
+      <FamilyBiographer />
     </SafeAreaProvider>
   );
 }
 
-function Shotgun() {
+function FamilyBiographer() {
   useKeepAwake(); // never let the screen sleep mid-session (in-car essential)
 
   // config
@@ -266,13 +266,13 @@ function Shotgun() {
     if (!giftResult) return;
     await Share.share({
       message:
-        `I got you Shotgun — it turns your stories into a biography for the family, ` +
+        `I got you Family Biographer — it turns your stories into a biography for the family, ` +
         `just by talking.\n\nOpen this link on your phone and follow the three steps:\n` +
         `${giftResult.url}\n\nYour code is ${giftResult.code}`,
     }).catch(() => {});
   }
 
-  // Gift links (shotgun://gift/CODE) open the app already signed in.
+  // Gift links (familybiographer://gift/CODE) open the app already signed in.
   useEffect(() => {
     const handle = (url) => {
       const m = String(url || "").match(/gift[/=]([A-Za-z0-9]{6})/);
@@ -375,7 +375,7 @@ function Shotgun() {
       // beginRecording() each set the right audio mode for their turn.)
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) {
-        setPhase("error"); setStatus("Shotgun needs the microphone to hear the answers. Allow it in Settings, then tap to continue.");
+        setPhase("error"); setStatus("Family Biographer needs the microphone to hear the answers. Allow it in Settings, then tap to continue.");
         return;
       }
       const r = await fetch(`${SERVER}/session/start`, {
@@ -528,10 +528,10 @@ function Shotgun() {
       cta: "Start their story",
       render: () => (
         <>
-          <Text style={s.eyebrow}>SHOTGUN</Text>
+          <Text style={s.eyebrow}>FAMILY BIOGRAPHER</Text>
           <Text style={s.h1}>Their stories deserve to outlive them.</Text>
           <Text style={s.subhead}>
-            Shotgun turns easy, everyday conversations into a beautifully written
+            Family Biographer turns easy, everyday conversations into a beautifully written
             biography — told in their own voice, and kept for good.
           </Text>
         </>
@@ -563,7 +563,7 @@ function Shotgun() {
             <View style={s.stepBody}>
               <Text style={s.stepTitle}>Just talk.</Text>
               <Text style={s.stepText}>
-                Mount the phone and drive. Shotgun rides along and asks the
+                Mount the phone and drive. Family Biographer rides along and asks the
                 questions a great biographer would — one at a time, warm and
                 unhurried.
               </Text>
@@ -660,7 +660,7 @@ function Shotgun() {
       <SafeAreaView style={s.rootLight}>
         <StatusBar style="dark" />
         <ScrollView contentContainerStyle={s.homeScroll} showsVerticalScrollIndicator={false}>
-          <Text style={s.eyebrow}>SHOTGUN</Text>
+          <Text style={s.eyebrow}>FAMILY BIOGRAPHER</Text>
           <Text style={s.h1}>{name ? `${name}'s story so far` : "The story so far"}</Text>
           <Text style={s.subhead}>
             {stories.length} {stories.length === 1 ? "story" : "stories"} saved for your family.
@@ -753,7 +753,7 @@ function Shotgun() {
         <ScrollView contentContainerStyle={s.setupScroll} showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
           <View style={s.panel}>
-            <Text style={s.h2}>Send Shotgun as a gift</Text>
+            <Text style={s.h2}>Send Family Biographer as a gift</Text>
             {giftResult ? (
               <>
                 <Text style={s.p}>
@@ -941,7 +941,7 @@ function Shotgun() {
   }
 
   // Briefing — shown every time before the interview starts. Two pages:
-  // the mechanics of talking to Shotgun, then the coaching a biographer
+  // the mechanics of talking to Family Biographer, then the coaching a biographer
   // gives a subject before an interview (specifics, names, feelings —
   // that's what makes the difference between recollections and a book).
   // The begin button is also the user tap that kicks off audio, which iOS

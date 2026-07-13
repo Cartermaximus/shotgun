@@ -1,4 +1,4 @@
-# Shotgun — Web Interview Client (test version)
+# Family Biographer — Web Interview Client (test version)
 
 A single HTML page your dad opens in his phone's browser. It speaks each question
 aloud, he taps a big button and talks, it shows what it heard, then asks the next
@@ -22,7 +22,7 @@ dug question. Built to get **feedback**, not for in-car driving use yet.
    ```bash
    ANTHROPIC_API_KEY=sk-ant-... npm start
    ```
-   It prints `Shotgun backend on :8787`.
+   It prints `Family Biographer backend on :8787`.
 2. Open `web/index.html` in Chrome on your Mac.
 3. In setup, enter a name and server address `http://localhost:8787`, hit Continue.
 4. Allow the microphone when asked, and talk. (Chrome desktop speech works well.)

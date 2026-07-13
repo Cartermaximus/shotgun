@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "Shotgun",
-    "slug": "shotgun",
-    "scheme": "shotgun",
+    "name": "Family Biographer",
+    "slug": "family-biographer",
+    "scheme": "familybiographer",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FBF8F3",
     "ios": {
-      "bundleIdentifier": "com.yourname.shotgun",
+      "bundleIdentifier": "com.familybiographer.app",
       "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Shotgun records your voice while you tell your life story, so it can be kept for your family.",
+        "NSMicrophoneUsageDescription": "Family Biographer records your voice while you tell your life story, so it can be kept for your family.",
         "UIBackgroundModes": [
           "audio"
         ]
@@ -21,7 +21,7 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Shotgun records your voice while you tell your life story, so it can be kept for your family."
+          "microphonePermission": "Family Biographer records your voice while you tell your life story, so it can be kept for your family."
         }
       ],
       "expo-asset"

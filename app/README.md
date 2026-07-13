@@ -1,4 +1,4 @@
-# Shotgun — Native iPhone App (v1) + Launch Path
+# Family Biographer — Native iPhone App (v1) + Launch Path
 
 Conversation mode, as designed: the app is open on a mounted phone, it asks a
 question aloud, your dad just talks. It records his actual voice continuously
