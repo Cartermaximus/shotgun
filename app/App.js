@@ -21,8 +21,9 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ScrollView, View, Text, Pressable, TextInput, StyleSheet, AppState,
+  ScrollView, View, Text, Pressable, TextInput, StyleSheet, AppState, Share,
 } from "react-native";
+import * as Linking from "expo-linking";
 // NOT react-native's SafeAreaView — that one overwrites style padding with
 // the device insets (0 on the sides), which erased every side margin.
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -97,11 +98,17 @@ function Shotgun() {
   const [view, setView] = useState(null);           // "home" | "account" | null
   const [stories, setStories] = useState([]);       // everything told so far
 
-  // account (v1: email + name, no verification yet — see backend /account)
+  // account (email + password; sessions are backend tokens)
   const [account, setAccount] = useState(null);
   const [buyerName, setBuyerName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [authMode, setAuthMode] = useState("create"); // "create" | "signin"
+
+  // gifting — buyer side creates a code/link; recipient side redeems it
+  const [giftName, setGiftName] = useState("");
+  const [giftResult, setGiftResult] = useState(null); // { code, url }
+  const [giftCodeInput, setGiftCodeInput] = useState("");
 
   // conversation state machine: setup | brief | asking | listening | thinking | error
   const [phase, setPhase] = useState("setup");
@@ -178,17 +185,22 @@ function Shotgun() {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) {
       setStatus("Enter a valid email address."); return;
     }
+    if (authMode === "create" && password.length < 8) {
+      setStatus("Password needs at least 8 characters."); return;
+    }
     setStatus("One moment…");
     try {
-      const r = await fetch(`${SERVER}/account`, {
+      const path = authMode === "create" ? "signup" : "login";
+      const r = await fetch(`${SERVER}/account/${path}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: em, name: buyerName.trim(), subjectId }),
+        body: JSON.stringify({ email: em, password, name: buyerName.trim() }),
       });
-      if (!r.ok) throw new Error(String(r.status));
-      const data = await r.json();
-      const acct = { accountId: data.accountId, email: data.email, name: data.name };
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus(data.error || "Something went wrong — try again."); return; }
+      const acct = { token: data.token, email: data.email, name: data.name };
       await AsyncStorage.setItem("account", JSON.stringify(acct));
       setAccount(acct);
+      setPassword("");
       setStatus("");
       if (stories.length) { setView("home"); }
       else { setView(null); setShowSales(false); } // on to interview setup
@@ -196,6 +208,80 @@ function Shotgun() {
       setStatus("Couldn't reach the server — try again.");
     }
   }
+
+  // Recipient side of a gift: the 6-letter code signs this phone in and
+  // links it to the buyer's account — no email or password for them.
+  // Redeeming again (new phone, reinstall) recovers the same story.
+  async function redeemGift(codeRaw) {
+    const code = String(codeRaw || "").trim().toUpperCase();
+    if (code.length !== 6) { setStatus("The code is 6 letters — check the gift page."); return; }
+    setStatus("One moment…");
+    try {
+      const r = await fetch(`${SERVER}/gift/redeem`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus(data.error || "That code didn't work — check the letters."); return; }
+      const acct = { gift: true, email: data.buyerEmail, buyerName: data.buyerName };
+      await AsyncStorage.multiSet([
+        ["subjectId", data.subjectId],
+        ["name", data.recipientName],
+        ["account", JSON.stringify(acct)],
+      ]);
+      setSubjectId(data.subjectId);
+      setName(data.recipientName);
+      setAccount(acct);
+      setStatus("");
+      const st = await loadStories(data.subjectId);
+      setShowSales(false);
+      if (st.length) setView("home");
+      else setView(null); // setup, with their name already filled in
+    } catch {
+      setStatus("Couldn't reach the server — try again.");
+    }
+  }
+
+  // Buyer side: create the gift, then hand the link to Messages/Mail.
+  async function createGift() {
+    if (!account?.token) { setStatus("Create your account first."); return; }
+    const who = giftName.trim();
+    if (!who) { setStatus("Who is the gift for?"); return; }
+    setStatus("One moment…");
+    try {
+      const r = await fetch(`${SERVER}/gift`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: account.token, recipientName: who }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus(data.error || "Something went wrong — try again."); return; }
+      setGiftResult(data);
+      setStatus("");
+    } catch {
+      setStatus("Couldn't reach the server — try again.");
+    }
+  }
+
+  async function shareGift() {
+    if (!giftResult) return;
+    await Share.share({
+      message:
+        `I got you Shotgun — it turns your stories into a biography for the family, ` +
+        `just by talking.\n\nOpen this link on your phone and follow the three steps:\n` +
+        `${giftResult.url}\n\nYour code is ${giftResult.code}`,
+    }).catch(() => {});
+  }
+
+  // Gift links (shotgun://gift/CODE) open the app already signed in.
+  useEffect(() => {
+    const handle = (url) => {
+      const m = String(url || "").match(/gift[/=]([A-Za-z0-9]{6})/);
+      if (m) redeemGift(m[1]);
+    };
+    Linking.getInitialURL().then(handle);
+    const sub = Linking.addEventListener("url", (e) => handle(e.url));
+    return () => sub.remove();
+  }, []);
 
   function stopEverything() {
     Speech.stop();
@@ -597,17 +683,117 @@ function Shotgun() {
           onPress={() => { setStatus(""); setBriefPage(0); setConfigured(true); setPhase("brief"); }}>
           <Text style={s.primaryText}>Continue the interview</Text>
         </Pressable>
-        <Pressable style={s.homeSettings} hitSlop={8}
-          onPress={() => { setStatus(""); setView(null); }}>
-          <Text style={s.homeSettingsText}>Interview setup</Text>
-        </Pressable>
-        {!!account && <Text style={s.signedIn}>Signed in as {account.email}</Text>}
+        <View style={s.homeLinks}>
+          <Pressable style={s.homeSettings} hitSlop={8}
+            onPress={() => { setStatus(""); setView(null); }}>
+            <Text style={s.homeSettingsText}>Interview setup</Text>
+          </Pressable>
+          {!!account?.token && (
+            <Pressable style={s.homeSettings} hitSlop={8}
+              onPress={() => { setStatus(""); setGiftResult(null); setView("gift"); }}>
+              <Text style={s.homeSettingsText}>Send as a gift</Text>
+            </Pressable>
+          )}
+        </View>
+        {!!account && (
+          <Text style={s.signedIn}>
+            {account.gift
+              ? `A gift from ${account.buyerName || account.email}`
+              : `Signed in as ${account.email}`}
+          </Text>
+        )}
       </SafeAreaView>
     );
   }
 
-  // Account — after the paywall, before setup. v1: email + name only, with
-  // honest copy; Sign in with Apple + verification come with the paid build.
+  // Gift code entry — the recipient's whole "login": big print, one code.
+  if (!configured && view === "redeem") {
+    return (
+      <SafeAreaView style={s.rootLight}>
+        <StatusBar style="dark" />
+        <View style={s.funnelHeader}>
+          <Pressable style={s.backBtn} hitSlop={12}
+            onPress={() => { setStatus(""); setView(null); setShowSales(true); }}>
+            <Text style={s.backText}>‹</Text>
+          </Pressable>
+          <View style={s.backBtn} />
+        </View>
+        <ScrollView contentContainerStyle={s.setupScroll} showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <Text style={s.h1}>Type in your gift code</Text>
+          <Text style={s.subhead}>
+            It's the 6 big letters on the page your family sent you. That's all
+            you need — no account, no password.
+          </Text>
+          <TextInput style={s.codeInput} value={giftCodeInput}
+            onChangeText={(t) => setGiftCodeInput(t.toUpperCase())}
+            autoCapitalize="characters" autoCorrect={false} maxLength={6}
+            placeholder="ABC123" placeholderTextColor={COLORS.hairline} />
+          <Pressable style={s.primary} onPress={() => redeemGift(giftCodeInput)}>
+            <Text style={s.primaryText}>That's my code</Text>
+          </Pressable>
+          {!!status && <Text style={s.hintLight}>{status}</Text>}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Gift creation — the buyer makes a code/link and shares it.
+  if (!configured && view === "gift") {
+    return (
+      <SafeAreaView style={s.rootLight}>
+        <StatusBar style="dark" />
+        <View style={s.funnelHeader}>
+          <Pressable style={s.backBtn} hitSlop={12}
+            onPress={() => { setStatus(""); setGiftResult(null); setView(stories.length ? "home" : null); }}>
+            <Text style={s.backText}>‹</Text>
+          </Pressable>
+          <View style={s.backBtn} />
+        </View>
+        <ScrollView contentContainerStyle={s.setupScroll} showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={s.panel}>
+            <Text style={s.h2}>Send Shotgun as a gift</Text>
+            {giftResult ? (
+              <>
+                <Text style={s.p}>
+                  Done — send {giftResult.recipientName} this link. The page walks
+                  them through it in three big-print steps, and the code below
+                  signs their phone in automatically. No account, no password,
+                  nothing for them to learn.
+                </Text>
+                <Text style={s.codeShow}>{giftResult.code}</Text>
+                <Pressable style={s.primary} onPress={shareGift}>
+                  <Text style={s.primaryText}>Send the link</Text>
+                </Pressable>
+                <Pressable style={s.homeSettings} hitSlop={8}
+                  onPress={() => { setGiftResult(null); setGiftName(""); }}>
+                  <Text style={s.homeSettingsText}>Make another gift</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={s.p}>
+                  For someone far away. You'll get a link to text them — their
+                  phone signs itself in, and their story shows up in your account.
+                </Text>
+                <Text style={s.label}>WHO IS IT FOR?</Text>
+                <TextInput style={s.input} value={giftName} onChangeText={setGiftName}
+                  autoCapitalize="words"
+                  placeholder="e.g. Dad" placeholderTextColor={COLORS.inkSoft} />
+                <Pressable style={s.primary} onPress={createGift}>
+                  <Text style={s.primaryText}>Create the gift</Text>
+                </Pressable>
+              </>
+            )}
+            {!!status && <Text style={s.hintLight}>{status}</Text>}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Account — after the paywall, before setup.
   if (!configured && view === "account") {
     const creating = authMode === "create";
     return (
@@ -642,6 +828,12 @@ function Shotgun() {
               autoCapitalize="none" autoCorrect={false} keyboardType="email-address"
               autoComplete="email"
               placeholder="you@example.com" placeholderTextColor={COLORS.inkSoft} />
+            <Text style={s.label}>PASSWORD</Text>
+            <TextInput style={s.input} value={password} onChangeText={setPassword}
+              secureTextEntry autoCapitalize="none"
+              autoComplete={creating ? "new-password" : "password"}
+              placeholder={creating ? "At least 8 characters" : "Your password"}
+              placeholderTextColor={COLORS.inkSoft} />
             <Pressable style={s.primary} onPress={submitAccount}>
               <Text style={s.primaryText}>{creating ? "Create account" : "Sign in"}</Text>
             </Pressable>
@@ -697,6 +889,12 @@ function Shotgun() {
           <Text style={s.primaryText}>{page.cta}</Text>
         </Pressable>
         {!!page.footnote && <Text style={s.footnote}>{page.footnote}</Text>}
+        {salesPage === 0 && (
+          <Pressable style={s.homeSettings} hitSlop={8}
+            onPress={() => { setStatus(""); setShowSales(false); setView("redeem"); }}>
+            <Text style={s.homeSettingsText}>I have a gift code</Text>
+          </Pressable>
+        )}
       </SafeAreaView>
     );
   }
@@ -862,7 +1060,17 @@ const s = StyleSheet.create({
   storyText: { color: COLORS.ink, fontSize: 15, lineHeight: 23, fontFamily: SERIF, fontStyle: "italic" },
   homeSettings: { alignSelf: "center", marginTop: 12, paddingVertical: 4 },
   homeSettingsText: { color: COLORS.inkSoft, fontSize: 14, textDecorationLine: "underline" },
+  homeLinks: { flexDirection: "row", justifyContent: "center", gap: 24 },
   signedIn: { color: COLORS.inkSoft, fontSize: 12, textAlign: "center", marginTop: 6 },
+
+  // gift code entry (recipient) / display (buyer) — big print on purpose
+  codeInput: { backgroundColor: "#FFFFFF", borderWidth: 2, borderColor: COLORS.pine,
+    borderRadius: 16, padding: 18, marginTop: 22, color: COLORS.ink,
+    fontSize: 36, letterSpacing: 10, textAlign: "center",
+    fontFamily: "Menlo" },
+  codeShow: { backgroundColor: COLORS.paper, borderWidth: 2, borderColor: COLORS.pine,
+    borderRadius: 16, padding: 16, marginTop: 6, marginBottom: 4, color: COLORS.ink,
+    fontSize: 36, letterSpacing: 10, textAlign: "center", fontFamily: "Menlo" },
   funnelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     marginTop: 4, marginBottom: 8 },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
