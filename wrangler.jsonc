@@ -1,0 +1,11 @@
+{
+  // Cloudflare Workers config — serves the static site in web/ as
+  // familybiographer.com. No code, just assets; _redirects in web/
+  // handles the /gift/CODE forwarding.
+  "name": "family-biographer",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./web",
+    "not_found_handling": "404-page"
+  }
+}
