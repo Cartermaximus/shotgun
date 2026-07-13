@@ -1,55 +1,94 @@
-/* Family Biographer — heirloom publisher look, shared across all pages */
+/* Family Biographer — editorial-publisher brand, color-blocked layout */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap');
+
 :root {
-  --paper: #FBF8F3; --ink: #22302B; --ink-soft: #5C6B64;
-  --pine: #2E5947; --pine-deep: #1F4033; --sage-tint: #E7EFE9; --hairline: #E4DFD5;
+  --ink: #1C2420; --ink-soft: #56645D;
+  --pine: #2E5947; --pine-deep: #1B3A2E; --pine-night: #12281F;
+  --sage: #A8C5B4; --sage-tint: #EAF1EC; --cream: #F5EFE3; --hairline: #E3E8E4;
 }
 * { box-sizing: border-box; margin: 0; }
 body {
-  background: var(--paper); color: var(--ink);
+  background: #fff; color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.55;
 }
-main { max-width: 680px; margin: 0 auto; padding: 32px 24px 80px; }
-h1, h2, h3, .serif { font-family: Georgia, "Times New Roman", serif; font-weight: 400; }
-h1 { font-size: clamp(34px, 6vw, 48px); line-height: 1.2; margin: 18px 0 14px; }
-h2 { font-size: 28px; margin: 56px 0 12px; }
-h3 { font-size: 20px; margin: 28px 0 6px; }
+.wrap { max-width: 700px; margin: 0 auto; padding: 0 24px; }
+h1, h2, h3 { font-family: "Fraunces", Georgia, serif; font-weight: 600; }
+h1 { font-size: clamp(38px, 6.5vw, 56px); line-height: 1.12; letter-spacing: -0.5px; }
+h2 { font-size: clamp(26px, 4vw, 34px); line-height: 1.2; margin-bottom: 14px; }
 p, li { font-size: 17px; color: var(--ink-soft); margin-top: 10px; }
-strong { color: var(--ink); }
-.eyebrow {
-  color: var(--pine); font-size: 13px; letter-spacing: 3px; font-weight: 700;
-}
+strong { color: inherit; }
+
+/* --- hero: deep green, light type --- */
+.hero { background: var(--pine-deep); color: #F4F8F5; padding: 72px 0 84px; }
+.hero .eyebrow { color: var(--sage); }
+.hero p { color: #C9D8CE; font-size: 20px; max-width: 34em; }
+.hero h1 { color: #fff; margin: 16px 0 18px; }
+.eyebrow { font-size: 13px; letter-spacing: 3.5px; font-weight: 700; color: var(--pine); }
 .eyebrow a { color: inherit; text-decoration: none; }
-.sub { font-size: 20px; }
+
 .btn {
-  display: inline-block; background: var(--pine); color: var(--paper);
-  text-decoration: none; font-size: 18px; font-weight: 700;
-  border-radius: 14px; padding: 16px 28px; margin-top: 24px;
+  display: inline-block; background: var(--cream); color: var(--pine-deep);
+  text-decoration: none; font-size: 17px; font-weight: 700;
+  border-radius: 999px; padding: 16px 32px; margin-top: 26px;
 }
-.btn:hover { background: var(--pine-deep); }
-.steps { counter-reset: step; list-style: none; padding: 0; }
-.steps li { counter-increment: step; display: flex; gap: 14px; margin-top: 22px; font-size: 17px; }
-.steps li::before {
-  content: counter(step); color: var(--pine); font-family: Georgia, serif;
-  font-size: 22px; min-width: 26px;
+.btn:hover { filter: brightness(.96); }
+.btn.solid { background: var(--pine); color: #fff; }
+.hero .note { font-size: 14px; color: #9DB3A6; margin-top: 14px; }
+
+/* --- sections --- */
+section { padding: 64px 0; }
+section.sage { background: var(--sage-tint); }
+section.pine { background: var(--pine-night); color: #F4F8F5; }
+section.pine h2 { color: #fff; }
+section.pine p { color: #C9D8CE; }
+
+/* numbered steps as cards */
+.stepgrid { display: grid; gap: 16px; margin-top: 26px; }
+@media (min-width: 640px) { .stepgrid { grid-template-columns: 1fr 1fr 1fr; } }
+.step {
+  background: #fff; border: 1px solid var(--hairline); border-radius: 18px; padding: 22px;
 }
-.steps b { display: block; color: var(--ink); font-size: 18px; }
-.card {
-  background: #fff; border: 1px solid var(--hairline); border-radius: 16px;
-  padding: 26px; margin-top: 24px;
+.step .num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 999px; background: var(--pine); color: #fff;
+  font-family: "Fraunces", serif; font-size: 17px; margin-bottom: 12px;
 }
-.price-card { text-align: center; border-color: rgba(46,89,71,.4); }
-.price-strike { text-decoration: line-through; font-size: 16px; }
-.price { color: var(--pine); font-family: Georgia, serif; font-size: 56px; margin: 6px 0 2px; }
-.guarantee { background: var(--sage-tint); border: none; }
-.check { list-style: none; padding: 0; }
-.check li { padding-left: 28px; position: relative; color: var(--ink); font-size: 17px; }
-.check li::before { content: "✓"; color: var(--pine); font-weight: 700; position: absolute; left: 0; }
-footer {
-  border-top: 1px solid var(--hairline); margin-top: 70px; padding-top: 22px;
-  font-size: 14px; color: var(--ink-soft);
+.step b { display: block; font-size: 18px; color: var(--ink); margin-bottom: 4px; }
+.step p { font-size: 15px; margin-top: 0; }
+
+.check { list-style: none; padding: 0; margin-top: 18px; }
+.check li { padding-left: 30px; position: relative; color: var(--ink); font-size: 17px; margin-top: 10px; }
+.check li::before {
+  content: "✓"; position: absolute; left: 0; top: 2px;
+  color: var(--pine); font-weight: 800;
 }
-footer a { color: var(--pine); }
-.legal h2 { font-size: 22px; margin-top: 40px; }
+
+/* price block inside the pine band */
+.pricebox {
+  background: rgba(255,255,255,.06); border: 1px solid rgba(168,197,180,.35);
+  border-radius: 22px; padding: 34px 26px; text-align: center; margin-top: 26px;
+}
+.price-strike { color: #9DB3A6; text-decoration: line-through; font-size: 16px; }
+.price { font-family: "Fraunces", serif; font-size: 64px; font-weight: 600; color: var(--sage); margin: 4px 0; }
+.pricebox .btn { margin-top: 18px; }
+.guarantee-line { margin-top: 18px; font-size: 15px; }
+.guarantee-line a { color: var(--sage); }
+
+footer { background: var(--pine-night); color: #9DB3A6; padding: 28px 0 44px; font-size: 14px;
+  border-top: 1px solid rgba(168,197,180,.2); }
+footer a { color: var(--sage); }
+
+/* --- legal pages --- */
+.legal-head { background: var(--pine-deep); padding: 20px 0; }
+.legal-head .eyebrow { color: var(--sage); }
+.legal { padding: 40px 0 80px; }
+.legal h1 { font-size: 40px; margin-bottom: 6px; }
+.legal h2 { font-size: 24px; margin-top: 38px; }
 .legal p, .legal li { font-size: 16px; }
 .updated { font-size: 14px; }
+.card {
+  background: var(--sage-tint); border-radius: 16px; padding: 22px; margin-top: 20px;
+}
+.legal footer { margin-top: 60px; background: none; border: none; padding: 0; color: var(--ink-soft); }
+.legal footer a { color: var(--pine); }
