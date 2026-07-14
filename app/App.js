@@ -22,9 +22,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ScrollView, View, Text, Pressable, TextInput, StyleSheet, AppState, Share,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, Image,
 } from "react-native";
 import * as Linking from "expo-linking";
+import * as ImagePicker from "expo-image-picker";
 // NOT react-native's SafeAreaView — that one overwrites style padding with
 // the device insets (0 on the sides), which erased every side margin.
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -98,6 +99,9 @@ function FamilyBiographer() {
   const [briefPage, setBriefPage] = useState(0);    // briefing: mechanics, then coaching
   const [view, setView] = useState(null);           // "home" | "account" | null
   const [stories, setStories] = useState([]);       // everything told so far
+  const [photos, setPhotos] = useState([]);         // pictures of the storyteller
+  const [audioBytes, setAudioBytes] = useState(0);  // total recorded audio (progress)
+  const [playingAudio, setPlayingAudio] = useState(null); // story audio file now playing
 
   // account (email + password; sessions are backend tokens)
   const [account, setAccount] = useState(null);
@@ -175,9 +179,81 @@ function FamilyBiographer() {
       const data = await r.json();
       const st = Array.isArray(data.stories) ? data.stories : [];
       setStories(st);
+      setPhotos(Array.isArray(data.photos) ? data.photos : []);
+      setAudioBytes(data.audioBytes || 0);
       return st;
     } catch {
       return [];
+    }
+  }
+
+  // Replay a saved recording — the keepsake, in their own voice.
+  async function togglePlayback(st) {
+    const snd = soundRef.current;
+    soundRef.current = null;
+    if (snd) await snd.unloadAsync().catch(() => {});
+    if (playingAudio === st.audio) { setPlayingAudio(null); return; } // tapped stop
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false, playsInSilentModeIOS: true, staysActiveInBackground: false,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: `${SERVER}/subject/${subjectId}/audio/${st.audio}` },
+        { shouldPlay: true }
+      );
+      soundRef.current = sound;
+      setPlayingAudio(st.audio);
+      sound.setOnPlaybackStatusUpdate((ps) => {
+        if (!ps.isLoaded || ps.didJustFinish) setPlayingAudio(null);
+      });
+    } catch {
+      setPlayingAudio(null);
+    }
+  }
+
+  // Add a photo of the storyteller (for the biography's illustrations).
+  async function addPhoto() {
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"], quality: 0.8,
+    }).catch(() => null);
+    if (!picked || picked.canceled || !picked.assets?.length) return;
+    const asset = picked.assets[0];
+    setStatus("Uploading photo…");
+    try {
+      const form = new FormData();
+      form.append("photo", {
+        uri: asset.uri,
+        name: asset.fileName || "photo.jpg",
+        type: asset.mimeType || "image/jpeg",
+      });
+      const r = await fetch(`${SERVER}/subject/${subjectId}/photos`, { method: "POST", body: form });
+      if (!r.ok) throw new Error(String(r.status));
+      const data = await r.json();
+      setPhotos(data.photos || []);
+      setStatus("");
+    } catch {
+      setStatus("Couldn't upload that photo — try again.");
+    }
+  }
+
+  // Invite the rest of the family to see stories, hear recordings, add photos.
+  async function inviteFamily() {
+    if (!account?.token) { setStatus("Create your account first."); return; }
+    try {
+      const r = await fetch(`${SERVER}/family`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: account.token, subjectId, recipientName: name }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus(data.error || "Something went wrong — try again."); return; }
+      await Share.share({
+        message:
+          `Join ${name || "our"} family circle on Family Biographer — see the stories, ` +
+          `hear the recordings in their own voice, and add photos.\n\n` +
+          `Get the app, tap "I have a gift code", and enter ${data.code}\n${data.url}`,
+      }).catch(() => {});
+    } catch {
+      setStatus("Couldn't reach the server — try again.");
     }
   }
 
@@ -224,7 +300,11 @@ function FamilyBiographer() {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { setStatus(data.error || "That code didn't work — check the letters."); return; }
-      const acct = { gift: true, email: data.buyerEmail, buyerName: data.buyerName };
+      const acct = {
+        gift: data.role !== "family",
+        family: data.role === "family",
+        email: data.buyerEmail, buyerName: data.buyerName,
+      };
       await AsyncStorage.multiSet([
         ["subjectId", data.subjectId],
         ["name", data.recipientName],
@@ -667,6 +747,24 @@ function FamilyBiographer() {
           <Text style={s.subhead}>
             {stories.length} {stories.length === 1 ? "story" : "stories"} saved for your family.
           </Text>
+          {/* Progress toward a full-length biography (~200 pages ≈ ~20 hours
+              of recorded material at ~1MB per minute of audio). */}
+          {audioBytes > 0 && (() => {
+            const mins = Math.round(audioBytes / 1e6);
+            const target = 20 * 60;
+            const pct = Math.min(100, (mins / target) * 100);
+            return (
+              <View style={s.progressWrap}>
+                <View style={s.progressBar}>
+                  <View style={[s.progressFill, { width: `${Math.max(2, pct)}%` }]} />
+                </View>
+                <Text style={s.progressText}>
+                  ≈{Math.floor(mins / 60)}h {mins % 60}m recorded · a full biography
+                  wants ~20 hours of stories
+                </Text>
+              </View>
+            );
+          })()}
           {grouped.map(([label, list]) => (
             <View style={s.chapter} key={label}>
               <Text style={s.chapterTitle}>{label}</Text>
@@ -675,6 +773,13 @@ function FamilyBiographer() {
                   <Text style={s.storyText} numberOfLines={3}>
                     “{st.text.length > 180 ? st.text.slice(0, 180).trim() + "…" : st.text}”
                   </Text>
+                  {!!st.audio && (
+                    <Pressable style={s.playBtn} hitSlop={8} onPress={() => togglePlayback(st)}>
+                      <Text style={s.playBtnText}>
+                        {playingAudio === st.audio ? "◼ Stop" : "▶ Hear it in their voice"}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
               ))}
             </View>
@@ -687,24 +792,72 @@ function FamilyBiographer() {
         </Pressable>
         <View style={s.homeLinks}>
           <Pressable style={s.homeSettings} hitSlop={8}
+            onPress={() => { setStatus(""); setView("profile"); }}>
+            <Text style={s.homeSettingsText}>Profile & photos</Text>
+          </Pressable>
+          <Pressable style={s.homeSettings} hitSlop={8}
             onPress={() => { setStatus(""); setView(null); }}>
             <Text style={s.homeSettingsText}>Interview setup</Text>
           </Pressable>
-          {!!account?.token && (
+        </View>
+        {!!account?.token && (
+          <View style={s.homeLinks}>
+            <Pressable style={s.homeSettings} hitSlop={8} onPress={inviteFamily}>
+              <Text style={s.homeSettingsText}>Invite family</Text>
+            </Pressable>
             <Pressable style={s.homeSettings} hitSlop={8}
               onPress={() => { setStatus(""); setGiftResult(null); setView("gift"); }}>
               <Text style={s.homeSettingsText}>Send as a gift</Text>
             </Pressable>
-          )}
-        </View>
+          </View>
+        )}
         {!!account && (
           <Text style={s.signedIn}>
-            {account.gift
+            {account.family
+              ? `In ${name ? name + "'s" : "the"} family circle`
+              : account.gift
               ? `A gift from ${account.buyerName || account.email}`
               : `Signed in as ${account.email}`}
           </Text>
         )}
       </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // Profile — who the storyteller is, and the family's photos of them.
+  // The pictures will illustrate the finished biography.
+  if (!configured && view === "profile") {
+    return (
+      <SafeAreaView style={s.rootLight}>
+        <StatusBar style="dark" />
+        <View style={s.funnelHeader}>
+          <Pressable style={s.backBtn} hitSlop={12}
+            onPress={() => { setStatus(""); setView("home"); }}>
+            <Text style={s.backText}>‹</Text>
+          </Pressable>
+          <View style={s.backBtn} />
+        </View>
+        <ScrollView contentContainerStyle={s.homeScroll} showsVerticalScrollIndicator={false}>
+          <Text style={s.eyebrow}>PROFILE</Text>
+          <Text style={s.h1}>{name || "The storyteller"}</Text>
+          {!!about && <Text style={s.subhead}>{about}</Text>}
+          <Text style={s.chapterTitle2}>PHOTOS · {photos.length}</Text>
+          <Text style={s.stepText}>
+            Add pictures from across their life — they'll illustrate the finished
+            biography alongside the stories.
+          </Text>
+          <View style={s.photoGrid}>
+            {photos.map((p) => (
+              <Image key={p} source={{ uri: `${SERVER}/subject/${subjectId}/photos/${p}` }}
+                style={s.photo} />
+            ))}
+          </View>
+          <Pressable style={s.primary} onPress={addPhoto}>
+            <Text style={s.primaryText}>Add a photo</Text>
+          </Pressable>
+          {!!status && <Text style={s.hintLight}>{status}</Text>}
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1077,6 +1230,16 @@ const s = StyleSheet.create({
   homeSettings: { alignSelf: "center", marginTop: 12, paddingVertical: 4 },
   homeSettingsText: { color: COLORS.inkSoft, fontSize: 14, textDecorationLine: "underline" },
   homeLinks: { flexDirection: "row", justifyContent: "center", gap: 24 },
+  progressWrap: { marginTop: 18 },
+  progressBar: { height: 8, borderRadius: 4, backgroundColor: COLORS.hairline, overflow: "hidden" },
+  progressFill: { height: 8, borderRadius: 4, backgroundColor: COLORS.pine },
+  progressText: { color: COLORS.inkSoft, fontSize: 13, marginTop: 8 },
+  playBtn: { marginTop: 10, alignSelf: "flex-start" },
+  playBtnText: { color: COLORS.pine, fontSize: 14, fontWeight: "700" },
+  chapterTitle2: { color: COLORS.pine, fontSize: 13, letterSpacing: 1.6, fontWeight: "700",
+    textTransform: "uppercase", marginTop: 30, marginBottom: 6 },
+  photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
+  photo: { width: "31.5%", aspectRatio: 1, borderRadius: 10, backgroundColor: COLORS.hairline },
   signedIn: { color: COLORS.inkSoft, fontSize: 12, textAlign: "center", marginTop: 6 },
 
   // gift code entry (recipient) / display (buyer) — big print on purpose
