@@ -227,8 +227,8 @@ function FamilyBiographer() {
         type: asset.mimeType || "image/jpeg",
       });
       const r = await fetch(`${SERVER}/subject/${subjectId}/photos`, { method: "POST", body: form });
-      if (!r.ok) throw new Error(String(r.status));
-      const data = await r.json();
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus(data.error || "Couldn't upload that photo — try again."); return; }
       setPhotos(data.photos || []);
       setStatus("");
     } catch {
@@ -464,6 +464,14 @@ function FamilyBiographer() {
         body: JSON.stringify({ subjectId, subjectName: name, subjectNotes: about }),
       });
       const data = await r.json();
+      if (data.capped) {
+        sessionActiveRef.current = false;
+        setConfigured(false);
+        setShowSales(false);
+        setView("home");
+        setStatus(data.message || "The interview is complete — a full book's worth of stories.");
+        return;
+      }
       await askAndListen(data.question, data.intro, subjectId);
     } catch {
       setPhase("error"); setStatus("Couldn't connect. Check your signal and tap to try again.");
