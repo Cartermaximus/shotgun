@@ -36,6 +36,13 @@ strong { color: inherit; }
 .btn.solid { background: var(--pine); color: #fff; }
 .hero .note { font-size: 14px; color: #9DB3A6; margin-top: 14px; }
 
+/* --- illustrations --- */
+.art { margin-top: 28px; border-radius: 20px; overflow: hidden; height: 280px; }
+.art svg { width: 100%; height: 100%; display: block; }
+.art-hero { height: 340px; }
+.art-gift { height: 240px; }
+@media (max-width: 600px) { .art, .art-hero { height: 220px; } }
+
 /* --- sections --- */
 section { padding: 64px 0; }
 section.sage { background: var(--sage-tint); }

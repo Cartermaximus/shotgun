@@ -623,6 +623,7 @@ function FamilyBiographer() {
             Family Biographer turns easy, everyday conversations into a beautifully written
             biography — told in their own voice, and kept for good.
           </Text>
+          <Image source={require("./assets/drive.png")} style={s.illo} resizeMode="cover" />
         </>
       ),
     },
@@ -647,6 +648,7 @@ function FamilyBiographer() {
       render: () => (
         <>
           <Text style={s.h1}>So we made asking effortless.</Text>
+          <Image source={require("./assets/book.png")} style={s.illo} resizeMode="cover" />
           <View style={s.step}>
             <Text style={s.stepNum}>1</Text>
             <View style={s.stepBody}>
@@ -709,6 +711,7 @@ function FamilyBiographer() {
       render: () => (
         <>
           <Text style={s.h1}>Everything included</Text>
+          <Image source={require("./assets/gift.png")} style={s.illoSmall} resizeMode="cover" />
           {[
             "A professionally written biography of their life",
             "Every conversation preserved in their own voice",
@@ -1266,6 +1269,8 @@ const s = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.hairline },
   dotActive: { backgroundColor: COLORS.pine },
   funnelScroll: { flexGrow: 1, justifyContent: "center", paddingBottom: 24 },
+  illo: { width: "100%", aspectRatio: 1.45, borderRadius: 20, marginTop: 18 },
+  illoSmall: { width: "100%", aspectRatio: 2.1, borderRadius: 20, marginTop: 14 },
   setupScroll: { flexGrow: 1, justifyContent: "center", paddingBottom: 24 },
 
   eyebrow: { color: COLORS.pine, fontSize: 13, letterSpacing: 3, fontWeight: "700", marginTop: 8 },
