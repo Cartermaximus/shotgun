@@ -22,7 +22,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ScrollView, View, Text, Pressable, TextInput, StyleSheet, AppState, Share,
-  KeyboardAvoidingView, Image, useWindowDimensions,
+  KeyboardAvoidingView, Image, useWindowDimensions, Animated, Easing,
 } from "react-native";
 import * as Linking from "expo-linking";
 import * as ImagePicker from "expo-image-picker";
@@ -76,6 +76,61 @@ const CHAPTERS = [
   ["hard_times", "Hard times"],
   ["beliefs_and_legacy", "Beliefs & legacy"],
 ];
+
+// The funnel's hero, animated: road streams past, the car settles on its
+// suspension, and the conversation pulses from the cabin. Layered PNGs
+// (square, cover-cropped by an overflow-hidden banner) driven by the core
+// Animated API — no extra native dependencies, runs on the UI thread.
+function DriveScene({ width }) {
+  const height = Math.round(width / 1.6);
+  const layerTop = -Math.round((width - height) / 2); // reproduce cover-crop
+  const dashX = React.useRef(new Animated.Value(0)).current;
+  const carY = React.useRef(new Animated.Value(0)).current;
+  const w1 = React.useRef(new Animated.Value(0.25)).current;
+  const w2 = React.useRef(new Animated.Value(0.25)).current;
+  const w3 = React.useRef(new Animated.Value(0.25)).current;
+
+  React.useEffect(() => {
+    dashX.setValue(0);
+    const period = (width * 144) / 800; // one dash cycle in screen pixels
+    const road = Animated.loop(
+      Animated.timing(dashX, {
+        toValue: -period, duration: 900, easing: Easing.linear, useNativeDriver: true,
+      })
+    );
+    const bob = Animated.loop(
+      Animated.sequence([
+        Animated.timing(carY, { toValue: -3, duration: 450, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(carY, { toValue: 0, duration: 450, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    const speak = (v, delay) => Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(v, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.25, duration: 550, useNativeDriver: true }),
+        Animated.delay(750 - delay),
+      ])
+    );
+    const anims = [road, bob, speak(w1, 0), speak(w2, 220), speak(w3, 440)];
+    anims.forEach((a) => a.start());
+    return () => anims.forEach((a) => a.stop());
+  }, [width]);
+
+  const layer = { position: "absolute", width, height: width, top: layerTop, left: 0 };
+  return (
+    <View style={{ width, height, borderRadius: 20, overflow: "hidden", marginTop: 18 }}>
+      <Image source={require("./assets/drive_l_bg.png")} style={layer} />
+      <Animated.Image source={require("./assets/drive_l_dashes.png")}
+        style={[layer, { transform: [{ translateX: dashX }] }]} />
+      <Animated.Image source={require("./assets/drive_l_car.png")}
+        style={[layer, { transform: [{ translateY: carY }] }]} />
+      <Animated.Image source={require("./assets/drive_l_wave1.png")} style={[layer, { opacity: w1 }]} />
+      <Animated.Image source={require("./assets/drive_l_wave2.png")} style={[layer, { opacity: w2 }]} />
+      <Animated.Image source={require("./assets/drive_l_wave3.png")} style={[layer, { opacity: w3 }]} />
+    </View>
+  );
+}
 
 export default function App() {
   return (
@@ -609,7 +664,6 @@ function FamilyBiographer() {
   // images at natural (huge) size.
   const winW = useWindowDimensions().width;
   const illoW = winW - 64;
-  const illoDrive = { width: illoW, height: Math.round(illoW / 1.6), borderRadius: 20, marginTop: 18 };
   const illoBook = { width: illoW, height: Math.round(illoW / 1.45), borderRadius: 20, marginTop: 18 };
   const illoGift = { width: illoW, height: Math.round(illoW / 2.1), borderRadius: 20, marginTop: 14 };
 
@@ -632,7 +686,7 @@ function FamilyBiographer() {
             Family Biographer turns easy, everyday conversations into a beautifully written
             biography — told in their own voice, and kept for good.
           </Text>
-          <Image source={require("./assets/drive.png")} style={illoDrive} resizeMode="cover" />
+          <DriveScene width={illoW} />
         </>
       ),
     },
