@@ -43,6 +43,29 @@ strong { color: inherit; }
 .art-gift { height: 240px; }
 @media (max-width: 600px) { .art, .art-hero { height: 220px; } }
 
+/* the hero drives: road streams past, car settles on its suspension,
+   the conversation rises like breath */
+.art-hero .fb-dashes { animation: fb-road 1s linear infinite; }
+@keyframes fb-road { to { transform: translateX(-144px); } }
+.art-hero .fb-car { animation: fb-bob 0.9s ease-in-out infinite; }
+@keyframes fb-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.art-hero .fb-word { opacity: 0; animation: fb-rise 2.6s ease-out infinite; }
+.art-hero .fb-word2 { animation-delay: 0.45s; }
+.art-hero .fb-word3 { animation-delay: 0.9s; }
+@keyframes fb-rise {
+  0% { opacity: 0; transform: translateY(14px); }
+  20% { opacity: 0.9; }
+  55% { opacity: 0; transform: translateY(-16px); }
+  100% { opacity: 0; transform: translateY(-16px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .art-hero .fb-dashes, .art-hero .fb-car, .art-hero .fb-word { animation: none; }
+  .art-hero .fb-word { opacity: 1; }
+}
+
 /* --- sections --- */
 section { padding: 64px 0; }
 section.sage { background: var(--sage-tint); }
