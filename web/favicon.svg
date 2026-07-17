@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <path d="M22 0 H78 Q100 0 100 22 V78 Q100 100 78 100 H22 Q0 100 0 78 V22 Q0 0 22 0 Z" fill="#1B3A2E"/>
+  <!-- open book, big for tiny sizes -->
+  <path d="M50 34 C 40 26, 24 25, 15 28 L 15 74 C 24 71, 40 72, 50 79 Z" fill="#F5EFE3"/>
+  <path d="M50 34 C 60 26, 76 25, 85 28 L 85 74 C 76 71, 60 72, 50 79 Z" fill="#E8DFC9"/>
+  <!-- voice above -->
+  <g stroke="#A8C5B4" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M38 20 L 38 15"/>
+    <path d="M50 22 L 50 10"/>
+    <path d="M62 20 L 62 15"/>
+  </g>
+</svg>
