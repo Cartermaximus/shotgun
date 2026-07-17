@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import * as Linking from "expo-linking";
 import * as ImagePicker from "expo-image-picker";
+import Svg, { Rect, Circle, Path, G, Line } from "react-native-svg";
 // NOT react-native's SafeAreaView — that one overwrites style padding with
 // the device insets (0 on the sides), which erased every side margin.
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -78,12 +79,12 @@ const CHAPTERS = [
 ];
 
 // The funnel's hero, animated: road streams past, the car settles on its
-// suspension, and the conversation pulses from the cabin. Layered PNGs
-// (square, cover-cropped by an overflow-hidden banner) driven by the core
-// Animated API — no extra native dependencies, runs on the UI thread.
+// suspension, and the conversation pulses from the cabin. Drawn natively
+// with react-native-svg (same paths as the website hero) — vector layers
+// wrapped in Animated.Views, driven on the native thread.
 function DriveScene({ width }) {
   const height = Math.round(width / 1.6);
-  const layerTop = -Math.round((width - height) / 2); // reproduce cover-crop
+  const layerTop = -Math.round((width - height) / 2); // center the square scene
   const dashX = React.useRef(new Animated.Value(0)).current;
   const carY = React.useRef(new Animated.Value(0)).current;
   const w1 = React.useRef(new Animated.Value(0.25)).current;
@@ -117,17 +118,57 @@ function DriveScene({ width }) {
     return () => anims.forEach((a) => a.stop());
   }, [width]);
 
+  // Every layer is a square Svg over the same shifted scene coordinates
+  // (the -140 lift that centers sun/car/road in the square).
   const layer = { position: "absolute", width, height: width, top: layerTop, left: 0 };
+  const L = ({ children, style }) => (
+    <Animated.View style={[layer, style]} pointerEvents="none">
+      <Svg width="100%" height="100%" viewBox="0 140 800 800">{children}</Svg>
+    </Animated.View>
+  );
   return (
-    <View style={{ width, height, borderRadius: 20, overflow: "hidden", marginTop: 18 }}>
-      <Image source={require("./assets/drive_l_bg.png")} style={layer} />
-      <Animated.Image source={require("./assets/drive_l_dashes.png")}
-        style={[layer, { transform: [{ translateX: dashX }] }]} />
-      <Animated.Image source={require("./assets/drive_l_car.png")}
-        style={[layer, { transform: [{ translateY: carY }] }]} />
-      <Animated.Image source={require("./assets/drive_l_wave1.png")} style={[layer, { opacity: w1 }]} />
-      <Animated.Image source={require("./assets/drive_l_wave2.png")} style={[layer, { opacity: w2 }]} />
-      <Animated.Image source={require("./assets/drive_l_wave3.png")} style={[layer, { opacity: w3 }]} />
+    <View style={{ width, height, borderRadius: 20, overflow: "hidden", marginTop: 18,
+      backgroundColor: "#1B3A2E" }}>
+      <L>
+        <Circle cx="560" cy="470" r="170" fill="#2E5947" opacity="0.5" />
+        <Circle cx="560" cy="470" r="100" fill="#3C6B56" opacity="0.5" />
+        <Circle cx="560" cy="452" r="38" fill="#F5EFE3" />
+        <Path d="M0 520 Q 150 452 320 512 T 800 500 L 800 560 L 0 560 Z" fill="#16302A" />
+        <Rect y="560" width="800" height="130" fill="#0F1D18" />
+        <Rect y="690" width="800" height="250" fill="#142B23" />
+      </L>
+      <L style={{ transform: [{ translateX: dashX }] }}>
+        <G stroke="#F5EFE3" strokeWidth="6" opacity="0.5">
+          <Line x1="20" y1="626" x2="92" y2="626" />
+          <Line x1="164" y1="626" x2="236" y2="626" />
+          <Line x1="308" y1="626" x2="380" y2="626" />
+          <Line x1="452" y1="626" x2="524" y2="626" />
+          <Line x1="596" y1="626" x2="668" y2="626" />
+          <Line x1="740" y1="626" x2="812" y2="626" />
+          <Line x1="884" y1="626" x2="956" y2="626" />
+          <Line x1="1028" y1="626" x2="1100" y2="626" />
+        </G>
+      </L>
+      <L style={{ transform: [{ translateY: carY }] }}>
+        <Rect x="230" y="508" width="196" height="56" rx="22" fill="#F5EFE3" />
+        <Path d="M268 508 L 276 474 Q 278 468 286 468 L 344 468 Q 354 468 362 478 L 386 508 Z" fill="#F5EFE3" />
+        <Path d="M284 504 L 290 480 Q 291 477 296 477 L 322 477 L 322 504 Z" fill="#2E5947" />
+        <Path d="M334 477 L 342 477 Q 347 477 351 483 L 368 504 L 334 504 Z" fill="#2E5947" />
+        <Circle cx="416" cy="524" r="7" fill="#2E5947" />
+        <Circle cx="276" cy="566" r="21" fill="#101B16" />
+        <Circle cx="276" cy="566" r="8" fill="#A8C5B4" />
+        <Circle cx="382" cy="566" r="21" fill="#101B16" />
+        <Circle cx="382" cy="566" r="8" fill="#A8C5B4" />
+      </L>
+      <L style={{ opacity: w1 }}>
+        <Path d="M377 437 A 26 26 0 0 1 398 458" stroke="#A8C5B4" strokeWidth="10" strokeLinecap="round" fill="none" />
+      </L>
+      <L style={{ opacity: w2 }}>
+        <Path d="M380 418 A 46 46 0 0 1 417 455" stroke="#A8C5B4" strokeWidth="10" strokeLinecap="round" fill="none" />
+      </L>
+      <L style={{ opacity: w3 }}>
+        <Path d="M384 398 A 66 66 0 0 1 437 451" stroke="#A8C5B4" strokeWidth="10" strokeLinecap="round" fill="none" />
+      </L>
     </View>
   );
 }
