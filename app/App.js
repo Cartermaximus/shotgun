@@ -623,7 +623,7 @@ function FamilyBiographer() {
             Family Biographer turns easy, everyday conversations into a beautifully written
             biography — told in their own voice, and kept for good.
           </Text>
-          <Image source={require("./assets/drive.png")} style={s.illo} resizeMode="cover" />
+          <Image source={require("./assets/drive.png")} style={s.illoDrive} resizeMode="cover" />
         </>
       ),
     },
@@ -1270,6 +1270,7 @@ const s = StyleSheet.create({
   dotActive: { backgroundColor: COLORS.pine },
   funnelScroll: { flexGrow: 1, justifyContent: "center", paddingBottom: 24 },
   illo: { width: "100%", aspectRatio: 1.45, borderRadius: 20, marginTop: 18 },
+  illoDrive: { width: "100%", aspectRatio: 1.6, borderRadius: 20, marginTop: 18 },
   illoSmall: { width: "100%", aspectRatio: 2.1, borderRadius: 20, marginTop: 14 },
   setupScroll: { flexGrow: 1, justifyContent: "center", paddingBottom: 24 },
 
