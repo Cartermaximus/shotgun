@@ -52,18 +52,17 @@ strong { color: inherit; }
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
 }
-.art-hero .fb-word { opacity: 0; animation: fb-rise 2.6s ease-out infinite; }
-.art-hero .fb-word2 { animation-delay: 0.45s; }
-.art-hero .fb-word3 { animation-delay: 0.9s; }
-@keyframes fb-rise {
-  0% { opacity: 0; transform: translateY(14px); }
-  20% { opacity: 0.9; }
-  55% { opacity: 0; transform: translateY(-16px); }
-  100% { opacity: 0; transform: translateY(-16px); }
+.art-hero .fb-wave { opacity: 0.25; animation: fb-speak 1.8s ease-in-out infinite; }
+.art-hero .fb-wave2 { animation-delay: 0.22s; }
+.art-hero .fb-wave3 { animation-delay: 0.44s; }
+@keyframes fb-speak {
+  0%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+  60% { opacity: 0.25; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .art-hero .fb-dashes, .art-hero .fb-car, .art-hero .fb-word { animation: none; }
-  .art-hero .fb-word { opacity: 1; }
+  .art-hero .fb-dashes, .art-hero .fb-car, .art-hero .fb-wave { animation: none; }
+  .art-hero .fb-wave { opacity: 1; }
 }
 
 /* --- sections --- */
