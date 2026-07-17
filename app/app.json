@@ -14,8 +14,10 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Family Biographer records your voice while you tell your life story, so it can be kept for your family.",
         "UIBackgroundModes": [
+          "audio",
           "audio"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "plugins": [
@@ -26,6 +28,11 @@
         }
       ],
       "expo-asset"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "764468b1-6292-4ef6-b51c-e1477213d3ca"
+      }
+    }
   }
 }
