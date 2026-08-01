@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import * as Linking from "expo-linking";
 import * as ImagePicker from "expo-image-picker";
+import Slider from "@react-native-community/slider";
 import Svg, { Rect, Circle, Path, G, Line } from "react-native-svg";
 // NOT react-native's SafeAreaView — that one overwrites style padding with
 // the device insets (0 on the sides), which erased every side margin.
@@ -196,6 +197,8 @@ function FamilyBiographer() {
   const [subjectId, setSubjectId] = useState(null);
   const [configured, setConfigured] = useState(false);
   const [silenceMs, setSilenceMs] = useState(DEFAULT_SILENCE_MS);
+  const [voiceRate, setVoiceRate] = useState(1);   // interviewer speaking speed
+  const voiceRateRef = useRef(1);
   const [showSales, setShowSales] = useState(true); // funnel shows first
   const [salesPage, setSalesPage] = useState(0);    // which funnel page
   const [briefPage, setBriefPage] = useState(0);    // briefing: mechanics, then coaching
@@ -244,11 +247,13 @@ function FamilyBiographer() {
   // ---------- boot: restore config ------------------------------------------
   useEffect(() => {
     (async () => {
-      const [n, a, id, acRaw] = await Promise.all([
+      const [n, a, id, acRaw, vr] = await Promise.all([
         AsyncStorage.getItem("name"), AsyncStorage.getItem("about"),
         AsyncStorage.getItem("subjectId"),
         AsyncStorage.getItem("account"),
+        AsyncStorage.getItem("voiceRate"),
       ]);
+      if (vr) { const v = Number(vr) || 1; setVoiceRate(v); voiceRateRef.current = v; }
       if (n) setName(n);
       if (a) setAbout(a);
       let acct = null;
@@ -543,6 +548,9 @@ function FamilyBiographer() {
     try {
       await playbackMode();
       soundRef.current = sound;
+      await sound.setStatusAsync({
+        rate: voiceRateRef.current, shouldCorrectPitch: true,
+      }).catch(() => {});
       await new Promise((resolve) => {
         let settled = false;
         const finish = () => {
@@ -584,7 +592,9 @@ function FamilyBiographer() {
     const list = humSoundsRef.current;
     if (!list.length) return;
     const snd = list[Math.floor(Math.random() * list.length)];
-    playbackMode().then(() => snd.replayAsync()).catch(() => {});
+    playbackMode()
+      .then(() => snd.setStatusAsync({ rate: voiceRateRef.current, shouldCorrectPitch: true }).catch(() => {}))
+      .then(() => snd.replayAsync()).catch(() => {});
   }
 
   function speakLocal(text) {
@@ -599,7 +609,7 @@ function FamilyBiographer() {
       // Watchdog: expo-speech's completion callbacks occasionally never fire
       // on iOS, which used to freeze the whole loop before the mic opened.
       const watchdog = setTimeout(finish, 2500 + text.length * 100);
-      Speech.speak(text, { rate: 0.95, onDone: finish, onStopped: finish, onError: finish });
+      Speech.speak(text, { rate: 0.95 * voiceRateRef.current, onDone: finish, onStopped: finish, onError: finish });
     });
   }
 
@@ -1462,6 +1472,21 @@ function FamilyBiographer() {
           <Text style={s.primaryOnDarkText}>End of chapter</Text>
         </Pressable>
       )}
+      <View style={s.rateRow}>
+        <Text style={s.rateLabel}>Voice speed {voiceRate.toFixed(2).replace(/\.?0+$/, "")}×</Text>
+        <Slider
+          style={s.rateSlider}
+          minimumValue={0.8} maximumValue={1.4} step={0.05} value={voiceRate}
+          onSlidingComplete={(v) => {
+            const r = Math.round(v * 100) / 100;
+            setVoiceRate(r); voiceRateRef.current = r;
+            AsyncStorage.setItem("voiceRate", String(r)).catch(() => {});
+          }}
+          minimumTrackTintColor={COLORS.sage}
+          maximumTrackTintColor="rgba(242,245,240,0.25)"
+          thumbTintColor={COLORS.moon}
+        />
+      </View>
       <Text style={s.tips}>
         Say “end of chapter,” tap the button, or pause {Math.round(silenceMs / 1000)}s to finish an answer
       </Text>
@@ -1579,7 +1604,10 @@ const s = StyleSheet.create({
   orbText: { color: COLORS.moon, fontWeight: "700", fontSize: 18 },
   orbTextListening: { color: COLORS.night },
   hint: { color: COLORS.moonDim, textAlign: "center", marginTop: 16, minHeight: 20, fontSize: 14 },
-  tips: { color: COLORS.moonDim, fontSize: 12, textAlign: "center", marginTop: 14, opacity: 0.8 },
+  tips: { color: COLORS.moonDim, fontSize: 12, textAlign: "center", marginTop: 10, opacity: 0.8 },
+  rateRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 },
+  rateLabel: { color: COLORS.moonDim, fontSize: 12, width: 110 },
+  rateSlider: { flex: 1, height: 32 },
   primaryOnDark: { backgroundColor: COLORS.moon, borderRadius: 14, padding: 16, marginTop: 18, alignItems: "center" },
   primaryOnDarkText: { color: COLORS.night, fontWeight: "700", fontSize: 17 },
   endBtn: { alignSelf: "center", marginTop: 12, paddingVertical: 9, paddingHorizontal: 18,
