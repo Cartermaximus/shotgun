@@ -647,15 +647,19 @@ function FamilyBiographer() {
   async function askAndListen(q, bridge, id) {
     if (!aliveRef.current || !sessionActiveRef.current) return;
     setQuestion(q); setHeard(""); setPhase("asking"); setStatus("");
-    const [ackSnd, qSnd] = await Promise.all([
-      bridge ? loadTTS(bridge) : Promise.resolve(null),
-      loadTTS(q),
-    ]);
-    if (!sessionActiveRef.current) {
-      ackSnd?.unloadAsync().catch(() => {}); qSnd?.unloadAsync().catch(() => {});
-      return;
+    // Question audio generates IN THE BACKGROUND while the (short, fast)
+    // acknowledgment plays — the ack must never wait on the question.
+    const qPromise = loadTTS(q);
+    if (bridge) {
+      const ackSnd = await loadTTS(bridge);
+      if (!sessionActiveRef.current) {
+        ackSnd?.unloadAsync().catch(() => {});
+        qPromise.then((s) => s?.unloadAsync().catch(() => {}));
+        return;
+      }
+      await playLoaded(ackSnd, bridge);
     }
-    if (bridge) await playLoaded(ackSnd, bridge);
+    const qSnd = await qPromise;
     if (!sessionActiveRef.current) { qSnd?.unloadAsync().catch(() => {}); return; }
     await playLoaded(qSnd, q);
     if (!sessionActiveRef.current) return; // session ended while speaking
@@ -1349,7 +1353,7 @@ function FamilyBiographer() {
         items: [
           ["Turn the volume up.", "Questions are spoken aloud — through the car speakers if your phone is connected to Bluetooth."],
           ["Just talk, naturally.", "Answer out loud the way you'd talk to a friend in the passenger seat. Take your time — long pauses are fine, it won't cut you off."],
-          ["Ending an answer is easy.", `Go quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds, say “let's move on,” or tap the big “I'm done” button — all three simply finish your answer.`],
+          ["Say “end of chapter.”", `That's how you finish an answer here — say it, tap the big “End of chapter” button, or simply go quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds.`],
           ["Your biographer takes it from there.", "Sometimes it asks a little more about what you just said; sometimes it moves somewhere new. And anything you'd rather not discuss, just say so."],
           ["Nothing is lost.", "Every word is recorded and saved — these conversations become the biography your family keeps."],
           ["Stop whenever.", "Tap “End session” when you're done. Next drive picks up right where you left off."],
@@ -1436,11 +1440,11 @@ function FamilyBiographer() {
       {phase === "listening" && (
         <Pressable style={s.primaryOnDark}
           onPress={() => { if (meterTimer.current) clearInterval(meterTimer.current); finishTurn(subjectId); }}>
-          <Text style={s.primaryOnDarkText}>I'm done — next question</Text>
+          <Text style={s.primaryOnDarkText}>End of chapter</Text>
         </Pressable>
       )}
       <Text style={s.tips}>
-        Pause {Math.round(silenceMs / 1000)}s, tap the button, or say “let's move on” to finish an answer
+        Say “end of chapter,” tap the button, or pause {Math.round(silenceMs / 1000)}s to finish an answer
       </Text>
       <Pressable style={s.endBtn} onPress={endSession}>
         <Text style={s.endText}>End session</Text>
