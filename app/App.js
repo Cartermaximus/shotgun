@@ -507,22 +507,34 @@ function FamilyBiographer() {
   }
 
   // ---------- speech out ------------------------------------------------------
-  // Primary voice: the backend's /tts endpoint (neural, warm). Falls back to
-  // the on-device system voice if the server can't be reached.
-  async function speak(text) {
-    if (!text) return;
+  // Primary voice: the backend's /tts endpoint (neural, warm), split into
+  // load (network) and play so multiple lines can prefetch IN PARALLEL —
+  // sequential fetches were a visible chunk of the between-question gap.
+  // Falls back to the on-device system voice if the server can't be reached.
+  async function playbackMode() {
+    // With recording mode active, iOS routes audio to the quiet earpiece.
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+    });
+  }
+
+  async function loadTTS(text) {
+    if (!text) return null;
     try {
-      // Playback mode first — with recording mode active, iOS routes audio
-      // to the tiny earpiece speaker instead of the loud one.
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-      });
       const { sound } = await Audio.Sound.createAsync(
         { uri: `${SERVER}/tts?text=${encodeURIComponent(text.slice(0, 1200))}` },
-        { shouldPlay: true }
+        { shouldPlay: false }
       );
+      return sound;
+    } catch { return null; }
+  }
+
+  async function playLoaded(sound, text) {
+    if (!sound) { if (text) await speakLocal(text); return; }
+    try {
+      await playbackMode();
       soundRef.current = sound;
       await new Promise((resolve) => {
         let settled = false;
@@ -533,16 +545,39 @@ function FamilyBiographer() {
           resolve();
         };
         // Watchdog so a lost status callback can never freeze the loop.
-        const watchdog = setTimeout(finish, 6000 + text.length * 120);
+        const watchdog = setTimeout(finish, 6000 + (text?.length || 40) * 120);
         sound.setOnPlaybackStatusUpdate((st) => {
           if (!st.isLoaded || st.didJustFinish) finish();
         });
+        sound.playAsync().catch(finish);
       });
       soundRef.current = null;
       await sound.unloadAsync().catch(() => {});
     } catch {
-      await speakLocal(text);
+      if (text) await speakLocal(text);
     }
+  }
+
+  async function speak(text) {
+    if (!text) return;
+    await playLoaded(await loadTTS(text), text);
+  }
+
+  // Tiny neutral acknowledgments ("Mm-hmm."), preloaded once per session and
+  // played the INSTANT an answer ends — a human interviewer reacts
+  // immediately even while thinking. These mask the upload+transcribe+think
+  // pipeline that used to be dead air.
+  const humSoundsRef = useRef([]);
+  async function preloadHums() {
+    if (humSoundsRef.current.length) return;
+    const sounds = await Promise.all(["Mm-hmm.", "Mmm.", "I see."].map((h) => loadTTS(h)));
+    humSoundsRef.current = sounds.filter(Boolean);
+  }
+  function playHum() {
+    const list = humSoundsRef.current;
+    if (!list.length) return;
+    const snd = list[Math.floor(Math.random() * list.length)];
+    playbackMode().then(() => snd.replayAsync()).catch(() => {});
   }
 
   function speakLocal(text) {
@@ -589,6 +624,7 @@ function FamilyBiographer() {
         setPhase("error"); setStatus("Family Biographer needs the microphone to hear the answers. Allow it in Settings, then tap to continue.");
         return;
       }
+      preloadHums(); // warm the instant-acknowledgment sounds in the background
       const r = await fetch(`${SERVER}/session/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subjectId, subjectName: name, subjectNotes: about }),
@@ -611,8 +647,17 @@ function FamilyBiographer() {
   async function askAndListen(q, bridge, id) {
     if (!aliveRef.current || !sessionActiveRef.current) return;
     setQuestion(q); setHeard(""); setPhase("asking"); setStatus("");
-    if (bridge) await speak(bridge);
-    await speak(q);
+    const [ackSnd, qSnd] = await Promise.all([
+      bridge ? loadTTS(bridge) : Promise.resolve(null),
+      loadTTS(q),
+    ]);
+    if (!sessionActiveRef.current) {
+      ackSnd?.unloadAsync().catch(() => {}); qSnd?.unloadAsync().catch(() => {});
+      return;
+    }
+    if (bridge) await playLoaded(ackSnd, bridge);
+    if (!sessionActiveRef.current) { qSnd?.unloadAsync().catch(() => {}); return; }
+    await playLoaded(qSnd, q);
     if (!sessionActiveRef.current) return; // session ended while speaking
     await beginRecording(id);
   }
@@ -631,6 +676,11 @@ function FamilyBiographer() {
       await rec.prepareToRecordAsync({
         ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
         isMeteringEnabled: true,
+        // Mono 64kbps AAC: audiobook-grade for speech, half the bytes of the
+        // stereo default — which halves the upload part of the between-
+        // question gap.
+        ios: { ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios, numberOfChannels: 1, bitRate: 64000 },
+        android: { ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android, numberOfChannels: 1, bitRate: 64000 },
       });
       await rec.startAsync();
       recordingRef.current = rec;
@@ -673,6 +723,7 @@ function FamilyBiographer() {
       uri = rec.getURI();
     } catch { /* fallthrough */ }
     if (!uri) { setPhase("error"); setStatus("Lost the recording — tap to continue."); return; }
+    playHum(); // instant human reaction while the pipeline works
     await uploadAnswer(uri, id);
   }
 
@@ -900,7 +951,7 @@ function FamilyBiographer() {
           {/* Progress toward a full-length biography (~200 pages ≈ ~20 hours
               of recorded material at ~1MB per minute of audio). */}
           {audioBytes > 0 && (() => {
-            const mins = Math.round(audioBytes / 1e6);
+            const mins = Math.round(audioBytes / 5e5); // ~0.5MB per minute at mono 64kbps
             const target = 20 * 60;
             const pct = Math.min(100, (mins / target) * 100);
             return (
