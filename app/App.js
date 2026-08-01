@@ -41,7 +41,7 @@ import { StatusBar } from "expo-status-bar";
 // this.
 const SERVER_URL = "https://shotgun-backend-production.up.railway.app";
 
-const DEFAULT_SILENCE_MS = 7000;   // long & forgiving — capture the pauses
+const DEFAULT_SILENCE_MS = 4000;   // end-of-answer pause; tune against real drives
 const MIN_ANSWER_MS = 1500;        // ignore blips shorter than this
 const METERING_SILENCE_DB = -40;   // below this = "quiet" (tune in real car)
 const METER_INTERVAL_MS = 300;
@@ -237,14 +237,13 @@ function FamilyBiographer() {
   // ---------- boot: restore config ------------------------------------------
   useEffect(() => {
     (async () => {
-      const [n, a, id, sil, acRaw] = await Promise.all([
+      const [n, a, id, acRaw] = await Promise.all([
         AsyncStorage.getItem("name"), AsyncStorage.getItem("about"),
-        AsyncStorage.getItem("subjectId"), AsyncStorage.getItem("silenceMs"),
+        AsyncStorage.getItem("subjectId"),
         AsyncStorage.getItem("account"),
       ]);
       if (n) setName(n);
       if (a) setAbout(a);
-      if (sil) setSilenceMs(Number(sil) || DEFAULT_SILENCE_MS);
       let acct = null;
       if (acRaw) {
         try { acct = JSON.parse(acRaw); } catch { /* corrupt — ignore */ }
@@ -571,7 +570,6 @@ function FamilyBiographer() {
     }
     await AsyncStorage.multiSet([
       ["name", name], ["about", about], ["subjectId", id],
-      ["silenceMs", String(silenceMs)],
     ]);
     setStatus("");
     setBriefPage(0);
@@ -1300,8 +1298,8 @@ function FamilyBiographer() {
         items: [
           ["Turn the volume up.", "Questions are spoken aloud — through the car speakers if your phone is connected to Bluetooth."],
           ["Just talk, naturally.", "Answer out loud the way you'd talk to a friend in the passenger seat. Take your time — long pauses are fine, it won't cut you off."],
-          ["Quiet means \"done.\"", `When you've finished and stay quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds, the next question comes. In a hurry? There's a big “I'm done” button too.`],
-          ["Skip anytime.", "Say “let's move on” out loud, or tap the button — no question is required."],
+          ["Ending an answer is easy.", `Go quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds, say “let's move on,” or tap the big “I'm done” button — all three simply finish your answer.`],
+          ["Your biographer takes it from there.", "Sometimes it asks a little more about what you just said; sometimes it moves somewhere new. And anything you'd rather not discuss, just say so."],
           ["Nothing is lost.", "Every word is recorded and saved — these conversations become the biography your family keeps."],
           ["Stop whenever.", "Tap “End session” when you're done. Next drive picks up right where you left off."],
         ],
@@ -1391,7 +1389,7 @@ function FamilyBiographer() {
         </Pressable>
       )}
       <Text style={s.tips}>
-        Pause {Math.round(silenceMs / 1000)}s, tap the button, or say “let's move on”
+        Pause {Math.round(silenceMs / 1000)}s, tap the button, or say “let's move on” to finish an answer
       </Text>
       <Pressable style={s.endBtn} onPress={endSession}>
         <Text style={s.endText}>End session</Text>
