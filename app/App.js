@@ -43,7 +43,13 @@ const SERVER_URL = "https://shotgun-backend-production.up.railway.app";
 
 const DEFAULT_SILENCE_MS = 4000;   // end-of-answer pause; tune against real drives
 const MIN_ANSWER_MS = 1500;        // ignore blips shorter than this
-const METERING_SILENCE_DB = -40;   // below this = "quiet" (tune in real car)
+// Speech vs non-speech: adaptive, not fixed. The quietest recent samples
+// teach us the ambient level (road noise, A/C, rain) — even mid-speech the
+// gaps between words dip near ambient — and "speech" is energy meaningfully
+// above that floor. A fixed threshold can never serve both a quiet den and
+// a 70mph highway; this serves both.
+const SPEECH_MARGIN_DB = 8;        // how far above ambient counts as speech
+const METER_WINDOW = 10;           // ~3s of samples for the ambient estimate
 const METER_INTERVAL_MS = 300;
 
 const COLORS = {
@@ -223,6 +229,7 @@ function FamilyBiographer() {
   const lastLoudRef = useRef(0);
   const startedTalkingRef = useRef(false);
   const meterTimer = useRef(null);
+  const meterBufRef = useRef([]);   // recent dB samples → adaptive noise floor
   const soundRef = useRef(null);
   const aliveRef = useRef(true);
   // True only while an interview is actually running. Guards every step of
@@ -690,6 +697,7 @@ function FamilyBiographer() {
       recordingRef.current = rec;
       lastLoudRef.current = Date.now();
       startedTalkingRef.current = false;
+      meterBufRef.current = [];
       setPhase("listening");
       setStatus("Listening — take all the time you need.");
 
@@ -701,11 +709,22 @@ function FamilyBiographer() {
         try { st = await r.getStatusAsync(); } catch { return; }
         const db = st.metering ?? -160;
         const now = Date.now();
-        if (db > METERING_SILENCE_DB) {
+
+        // Ambient floor = quietest of the last ~3s (word gaps dip to ambient
+        // even mid-speech, and steady road noise IS the minimum). Clamped so
+        // mic self-noise can't trigger and shouting rooms can't block.
+        const buf = meterBufRef.current;
+        buf.push(db);
+        if (buf.length > METER_WINDOW) buf.shift();
+        const floor = Math.min(...buf);
+        const threshold = Math.min(Math.max(floor + SPEECH_MARGIN_DB, -52), -18);
+
+        if (db > threshold) {
           lastLoudRef.current = now;
           if (now - startedAt > MIN_ANSWER_MS) startedTalkingRef.current = true;
         }
-        // End of turn: they've talked, then gone quiet for the long window.
+        // End of turn: they've spoken, then no SPEECH for the window —
+        // ambient noise no longer resets the clock.
         if (startedTalkingRef.current && now - lastLoudRef.current >= silenceMs) {
           clearInterval(meterTimer.current);
           await finishTurn(id);
