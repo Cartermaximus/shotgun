@@ -1476,7 +1476,7 @@ function FamilyBiographer() {
         <Text style={s.rateLabel}>Voice speed {voiceRate.toFixed(2).replace(/\.?0+$/, "")}×</Text>
         <Slider
           style={s.rateSlider}
-          minimumValue={0.8} maximumValue={1.4} step={0.05} value={voiceRate}
+          minimumValue={0.8} maximumValue={2} step={0.05} value={voiceRate}
           onSlidingComplete={(v) => {
             const r = Math.round(v * 100) / 100;
             setVoiceRate(r); voiceRateRef.current = r;
