@@ -818,6 +818,7 @@ function FamilyBiographer() {
           <Image source={require("./assets/gift.png")} style={illoGift} resizeMode="cover" />
           {[
             "A professionally written biography of their life",
+            "A printed hardcover, shipped to your family",
             "Every conversation preserved in their own voice",
             "Guided interviews that draw out the untold stories",
             "A keepsake your family keeps for generations",
