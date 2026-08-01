@@ -204,7 +204,9 @@ function FamilyBiographer() {
   const [buyerName, setBuyerName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [authMode, setAuthMode] = useState("create"); // "create" | "signin"
+  const [authMode, setAuthMode] = useState("create"); // "create" | "signin" | "forgot"
+  const [resetSent, setResetSent] = useState(false);
+  const [resetCode, setResetCode] = useState("");
 
   // gifting — buyer side creates a code/link; recipient side redeems it
   const [giftName, setGiftName] = useState("");
@@ -380,6 +382,40 @@ function FamilyBiographer() {
     } catch {
       setStatus("Couldn't reach the server — try again.");
     }
+  }
+
+  async function submitForgot() {
+    const em = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { setStatus("Enter a valid email address."); return; }
+    setStatus("One moment…");
+    try {
+      const r = await fetch(`${SERVER}/account/forgot`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: em }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus(data.error || "Something went wrong — try again."); return; }
+      setResetSent(true);
+      setStatus("Check your email for a 6-digit code.");
+    } catch { setStatus("Couldn't reach the server — try again."); }
+  }
+
+  async function submitReset() {
+    if (password.length < 8) { setStatus("New password needs at least 8 characters."); return; }
+    setStatus("One moment…");
+    try {
+      const r = await fetch(`${SERVER}/account/reset`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: resetCode.trim(), newPassword: password }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus(data.error || "Something went wrong — try again."); return; }
+      const acct = { token: data.token, email: data.email, name: data.name };
+      await AsyncStorage.setItem("account", JSON.stringify(acct));
+      setAccount(acct); setPassword(""); setResetCode(""); setResetSent(false);
+      setAuthMode("signin"); setStatus("");
+      if (stories.length) setView("home"); else { setView(null); setShowSales(false); }
+    } catch { setStatus("Couldn't reach the server — try again."); }
   }
 
   // Recipient side of a gift: the 6-letter code signs this phone in and
@@ -1086,9 +1122,14 @@ function FamilyBiographer() {
         <ScrollView contentContainerStyle={s.setupScroll} showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
           <View style={s.panel}>
-            <Text style={s.h2}>{creating ? "Create your account" : "Welcome back"}</Text>
+            <Text style={s.h2}>
+              {authMode === "forgot" ? "Reset your password" : creating ? "Create your account" : "Welcome back"}
+            </Text>
             <Text style={s.p}>
-              {creating
+              {authMode === "forgot"
+                ? (resetSent ? "Enter the 6-digit code from your email and pick a new password."
+                   : "We'll email you a 6-digit code.")
+                : creating
                 ? "Your account is where the finished biography is delivered — and how the recordings stay safe if the phone doesn't."
                 : "Sign in with the email you used before."}
             </Text>
@@ -1105,17 +1146,40 @@ function FamilyBiographer() {
               autoCapitalize="none" autoCorrect={false} keyboardType="email-address"
               autoComplete="email"
               placeholder="you@example.com" placeholderTextColor={COLORS.inkSoft} />
-            <Text style={s.label}>PASSWORD</Text>
-            <TextInput style={s.input} value={password} onChangeText={setPassword}
-              secureTextEntry autoCapitalize="none"
-              autoComplete={creating ? "new-password" : "password"}
-              placeholder={creating ? "At least 8 characters" : "Your password"}
-              placeholderTextColor={COLORS.inkSoft} />
-            <Pressable style={s.primary} onPress={submitAccount}>
-              <Text style={s.primaryText}>{creating ? "Create account" : "Sign in"}</Text>
+            {authMode === "forgot" && resetSent && (
+              <>
+                <Text style={s.label}>CODE FROM YOUR EMAIL</Text>
+                <TextInput style={s.input} value={resetCode} onChangeText={setResetCode}
+                  keyboardType="number-pad" maxLength={6}
+                  placeholder="6 digits" placeholderTextColor={COLORS.inkSoft} />
+              </>
+            )}
+            {(authMode !== "forgot" || resetSent) && (
+              <>
+                <Text style={s.label}>{authMode === "forgot" ? "NEW PASSWORD" : "PASSWORD"}</Text>
+                <TextInput style={s.input} value={password} onChangeText={setPassword}
+                  secureTextEntry autoCapitalize="none"
+                  autoComplete={creating || authMode === "forgot" ? "new-password" : "password"}
+                  placeholder={authMode === "signin" ? "Your password" : "At least 8 characters"}
+                  placeholderTextColor={COLORS.inkSoft} />
+              </>
+            )}
+            <Pressable style={s.primary} onPress={
+              authMode === "forgot" ? (resetSent ? submitReset : submitForgot) : submitAccount
+            }>
+              <Text style={s.primaryText}>
+                {authMode === "forgot" ? (resetSent ? "Set new password" : "Email me a code")
+                  : creating ? "Create account" : "Sign in"}
+              </Text>
             </Pressable>
+            {authMode === "signin" && (
+              <Pressable style={s.homeSettings} hitSlop={8}
+                onPress={() => { setStatus(""); setResetSent(false); setAuthMode("forgot"); }}>
+                <Text style={s.homeSettingsText}>Forgot password?</Text>
+              </Pressable>
+            )}
             <Pressable style={s.homeSettings} hitSlop={8}
-              onPress={() => { setStatus(""); setAuthMode(creating ? "signin" : "create"); }}>
+              onPress={() => { setStatus(""); setResetSent(false); setAuthMode(creating ? "signin" : "create"); }}>
               <Text style={s.homeSettingsText}>
                 {creating ? "Already have an account? Sign in" : "New here? Create an account"}
               </Text>
