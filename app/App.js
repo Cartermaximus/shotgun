@@ -1300,8 +1300,8 @@ function FamilyBiographer() {
         items: [
           ["Turn the volume up.", "Questions are spoken aloud — through the car speakers if your phone is connected to Bluetooth."],
           ["Just talk, naturally.", "Answer out loud the way you'd talk to a friend in the passenger seat. Take your time — long pauses are fine, it won't cut you off."],
-          ["Quiet means \"done.\"", `When you've finished and stay quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds, the next question comes.`],
-          ["Skip anytime.", "Say “Okay, next question” out loud to move on from any question."],
+          ["Quiet means \"done.\"", `When you've finished and stay quiet for about ${Math.round(DEFAULT_SILENCE_MS / 1000)} seconds, the next question comes. In a hurry? There's a big “I'm done” button too.`],
+          ["Skip anytime.", "Say “next question” out loud, or tap the button, to move on from any question."],
           ["Nothing is lost.", "Every word is recorded and saved — these conversations become the biography your family keeps."],
           ["Stop whenever.", "Tap “End session” when you're done. Next drive picks up right where you left off."],
         ],
@@ -1384,8 +1384,14 @@ function FamilyBiographer() {
           <Text style={s.primaryOnDarkText}>Tap to continue</Text>
         </Pressable>
       )}
+      {phase === "listening" && (
+        <Pressable style={s.primaryOnDark}
+          onPress={() => { if (meterTimer.current) clearInterval(meterTimer.current); finishTurn(subjectId); }}>
+          <Text style={s.primaryOnDarkText}>I'm done — next question</Text>
+        </Pressable>
+      )}
       <Text style={s.tips}>
-        Quiet for {Math.round(silenceMs / 1000)}s = next question · say “Okay, next question” to skip
+        Pause {Math.round(silenceMs / 1000)}s, tap the button, or say “next question” — all move on
       </Text>
       <Pressable style={s.endBtn} onPress={endSession}>
         <Text style={s.endText}>End session</Text>
