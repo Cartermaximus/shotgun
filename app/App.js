@@ -467,6 +467,7 @@ function FamilyBiographer() {
       }
       if (id) {
         setSubjectId(id);
+        if (acct?.token) linkSubjectToAccount(acct.token, id);
         // Returning user with stories on file → land on the home catalog,
         // not the sales funnel.
         const st = await loadStories(id);
@@ -595,12 +596,15 @@ function FamilyBiographer() {
       setAccount(acct);
       setPassword("");
       setStatus("");
-      // Restore this account's storyteller (post-logout or fresh device).
-      if (!subjectId && data.subjectIds?.length) {
-        const sid = data.subjectIds[data.subjectIds.length - 1];
-        setSubjectId(sid);
-        AsyncStorage.setItem("subjectId", sid).catch(() => {});
-        const st = await loadStories(sid);
+      // Restore this account's storyteller (post-logout or fresh device):
+      // the one with the most stories, not merely the newest id.
+      if (subjectId) linkSubjectToAccount(data.token, subjectId);
+      if (!subjectId && data.subjects?.length) {
+        const best = [...data.subjects].sort((a, b) => b.storyCount - a.storyCount)[0];
+        setSubjectId(best.id);
+        if (best.name) { setName(best.name); AsyncStorage.setItem("name", best.name).catch(() => {}); }
+        AsyncStorage.setItem("subjectId", best.id).catch(() => {});
+        const st = await loadStories(best.id);
         if (st.length) { setShowSales(false); setView("home"); return; }
       }
       if (stories.length) { setView("home"); }
@@ -640,15 +644,25 @@ function FamilyBiographer() {
       await AsyncStorage.setItem("account", JSON.stringify(acct));
       setAccount(acct); setPassword(""); setResetCode(""); setResetSent(false);
       setAuthMode("signin"); setStatus("");
-      if (!subjectId && data.subjectIds?.length) {
-        const sid = data.subjectIds[data.subjectIds.length - 1];
-        setSubjectId(sid);
-        AsyncStorage.setItem("subjectId", sid).catch(() => {});
-        const st = await loadStories(sid);
+      if (subjectId) linkSubjectToAccount(data.token, subjectId);
+      if (!subjectId && data.subjects?.length) {
+        const best = [...data.subjects].sort((a, b) => b.storyCount - a.storyCount)[0];
+        setSubjectId(best.id);
+        if (best.name) { setName(best.name); AsyncStorage.setItem("name", best.name).catch(() => {}); }
+        AsyncStorage.setItem("subjectId", best.id).catch(() => {});
+        const st = await loadStories(best.id);
         if (st.length) { setShowSales(false); setView("home"); return; }
       }
       if (stories.length) setView("home"); else { setView(null); setShowSales(false); }
     } catch { setStatus("Couldn't reach the server — try again."); }
+  }
+
+  function linkSubjectToAccount(token, sid) {
+    if (!token || !sid) return;
+    fetch(`${SERVER}/account/link-subject`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, subjectId: sid }),
+    }).catch(() => {});
   }
 
   async function signOut() {
@@ -905,6 +919,7 @@ function FamilyBiographer() {
       ["name", name], ["about", about], ["subjectId", id],
     ]);
     setStatus("");
+    if (account?.token) linkSubjectToAccount(account.token, id);
     setBriefPage(0);
     setConfigured(true);
     setPhase("brief");
