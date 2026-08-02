@@ -595,6 +595,14 @@ function FamilyBiographer() {
       setAccount(acct);
       setPassword("");
       setStatus("");
+      // Restore this account's storyteller (post-logout or fresh device).
+      if (!subjectId && data.subjectIds?.length) {
+        const sid = data.subjectIds[data.subjectIds.length - 1];
+        setSubjectId(sid);
+        AsyncStorage.setItem("subjectId", sid).catch(() => {});
+        const st = await loadStories(sid);
+        if (st.length) { setShowSales(false); setView("home"); return; }
+      }
       if (stories.length) { setView("home"); }
       else { setView(null); setShowSales(false); } // on to interview setup
     } catch {
@@ -632,6 +640,13 @@ function FamilyBiographer() {
       await AsyncStorage.setItem("account", JSON.stringify(acct));
       setAccount(acct); setPassword(""); setResetCode(""); setResetSent(false);
       setAuthMode("signin"); setStatus("");
+      if (!subjectId && data.subjectIds?.length) {
+        const sid = data.subjectIds[data.subjectIds.length - 1];
+        setSubjectId(sid);
+        AsyncStorage.setItem("subjectId", sid).catch(() => {});
+        const st = await loadStories(sid);
+        if (st.length) { setShowSales(false); setView("home"); return; }
+      }
       if (stories.length) setView("home"); else { setView(null); setShowSales(false); }
     } catch { setStatus("Couldn't reach the server — try again."); }
   }
@@ -644,9 +659,15 @@ function FamilyBiographer() {
         body: JSON.stringify({ token }),
       }).catch(() => {});
     }
-    await AsyncStorage.removeItem("account").catch(() => {});
-    setAccount(null); setPassword(""); setStatus("");
-    if (!stories.length) { setView(null); setShowSales(true); }
+    // Full reset: signing out returns this phone to a fresh state. The
+    // account's storytellers are restored from the server on next sign-in.
+    await AsyncStorage.multiRemove(["account", "subjectId", "name", "about"]).catch(() => {});
+    pendingSessionRef.current = null;
+    setAccount(null); setSubjectId(null); setName(""); setAbout("");
+    setStories([]); setPhotos([]); setAudioBytes(0);
+    setEmail(""); setPassword(""); setStatus("");
+    setConfigured(false); setPhase("setup");
+    setSalesPage(0); setView(null); setShowSales(true);
   }
 
   // Recipient side of a gift: the 6-letter code signs this phone in and
@@ -853,6 +874,9 @@ function FamilyBiographer() {
 
   function prepareSession(id) {
     const p = (async () => {
+      // iOS: sounds created before the audio session is configured can play
+      // silently — establish playback mode before pre-generating any audio.
+      await playbackMode().catch(() => {});
       const r = await fetch(`${SERVER}/session/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subjectId: id, subjectName: name, subjectNotes: about }),
