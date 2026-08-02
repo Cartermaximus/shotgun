@@ -27,7 +27,7 @@ import {
 import * as Linking from "expo-linking";
 import * as ImagePicker from "expo-image-picker";
 import Slider from "@react-native-community/slider";
-import Svg, { Rect, Circle, Path, G, Line } from "react-native-svg";
+import Svg, { Rect, Circle, Path, G, Line, Ellipse } from "react-native-svg";
 // NOT react-native's SafeAreaView — that one overwrites style padding with
 // the device insets (0 on the sides), which erased every side margin.
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -266,6 +266,117 @@ function TalkCycle({ width }) {
         </View>
         <Text style={label}>4s quiet → next</Text>
       </View>
+    </View>
+  );
+}
+
+
+// The voice-becomes-a-book scene, animated: sound bars pulse in sequence and
+// the book's text lines shimmer in — the story being written as it's told.
+function BookScene({ width }) {
+  const height = Math.round((width * 380) / 660);
+  const bars = React.useRef([...Array(5)].map(() => new Animated.Value(0.45))).current;
+  const lines = React.useRef(new Animated.Value(0.35)).current;
+  React.useEffect(() => {
+    const anims = bars.map((v, i) => {
+      const a = Animated.loop(Animated.sequence([
+        Animated.delay(i * 170),
+        Animated.timing(v, { toValue: 1, duration: 380, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.45, duration: 420, useNativeDriver: true }),
+      ]));
+      a.start(); return a;
+    });
+    const la = Animated.loop(Animated.sequence([
+      Animated.timing(lines, { toValue: 1, duration: 1100, useNativeDriver: true }),
+      Animated.timing(lines, { toValue: 0.35, duration: 1300, useNativeDriver: true }),
+    ]));
+    la.start(); anims.push(la);
+    return () => anims.forEach((a) => a.stop());
+  }, []);
+  const VB = "100 190 660 380";
+  const layer = { position: "absolute", left: 0, top: 0, width, height };
+  const BARS = [[120, 300, 90], [166, 260, 170], [212, 320, 52], [258, 282, 126], [304, 308, 76]];
+  return (
+    <View style={{ width, height, marginTop: 18 }}>
+      <Svg width="100%" height="100%" viewBox={VB}>
+        <Path d="M568 262 C 508 220, 420 214, 456 240 L 456 520 C 486 500, 526 505, 568 540 Z"
+          fill="#FFFFFF" stroke="#2E5947" strokeWidth="12" strokeLinejoin="round" />
+        <G transform="translate(452 260)">
+          <Path d="M110 20 C 60 -14, -20 -20, -60 0 L -60 250 C -20 230, 60 236, 110 276 Z"
+            fill="#FFFFFF" stroke="#2E5947" strokeWidth="12" strokeLinejoin="round" />
+          <Path d="M110 20 C 160 -14, 240 -20, 280 0 L 280 250 C 240 230, 160 236, 110 276 Z"
+            fill="#F5EFE3" stroke="#2E5947" strokeWidth="12" strokeLinejoin="round" />
+        </G>
+      </Svg>
+      {bars.map((v, i) => (
+        <Animated.View key={i} style={[layer, { opacity: v }]} pointerEvents="none">
+          <Svg width="100%" height="100%" viewBox={VB}>
+            <Rect x={BARS[i][0]} y={BARS[i][1]} width="26" height={BARS[i][2]} rx="13"
+              fill={i === 3 ? "#2E5947" : "#A8C5B4"} />
+          </Svg>
+        </Animated.View>
+      ))}
+      <Animated.View style={[layer, { opacity: lines }]} pointerEvents="none">
+        <Svg width="100%" height="100%" viewBox={VB}>
+          <G transform="translate(452 260)" stroke="#A8C5B4" strokeWidth="10" strokeLinecap="round">
+            <Line x1="-16" y1="60" x2="66" y2="52" />
+            <Line x1="-16" y1="100" x2="66" y2="92" />
+            <Line x1="-16" y1="140" x2="66" y2="132" />
+            <Line x1="152" y1="52" x2="234" y2="60" />
+            <Line x1="152" y1="92" x2="234" y2="100" />
+            <Line x1="152" y1="132" x2="234" y2="140" />
+          </G>
+        </Svg>
+      </Animated.View>
+    </View>
+  );
+}
+
+// The gift floats gently; the tag trails a beat behind, like a slow swing.
+function GiftScene({ width }) {
+  const height = Math.round((width * 470) / 540);
+  const bodyY = React.useRef(new Animated.Value(0)).current;
+  const tagY = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    const float = (v, delay) => Animated.loop(Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(v, { toValue: -6, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(v, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ]));
+    const a = float(bodyY, 0), b = float(tagY, 300);
+    a.start(); b.start();
+    return () => { a.stop(); b.stop(); };
+  }, []);
+  const VB = "180 195 540 470";
+  const layer = { position: "absolute", left: 0, top: 0, width, height };
+  return (
+    <View style={{ width, height, marginTop: 14, alignSelf: "center" }}>
+      <Svg width="100%" height="100%" viewBox={VB}>
+        <Ellipse cx="400" cy="618" rx="220" ry="26" fill="#E4DFD5" />
+      </Svg>
+      <Animated.View style={[layer, { transform: [{ translateY: bodyY }] }]} pointerEvents="none">
+        <Svg width="100%" height="100%" viewBox={VB}>
+          <Rect x="200" y="220" width="400" height="380" rx="22" fill="#2E5947" />
+          <Rect x="200" y="220" width="34" height="380" rx="17" fill="#1F4033" />
+          <Rect x="588" y="238" width="18" height="344" rx="9" fill="#F5EFE3" />
+          <Rect x="376" y="220" width="48" height="380" fill="#A8C5B4" />
+          <Rect x="200" y="386" width="400" height="48" fill="#A8C5B4" />
+          <Path d="M400 396 C 360 356, 312 360, 316 392 C 318 416, 366 418, 400 410 Z" fill="#A8C5B4" />
+          <Path d="M400 396 C 440 356, 488 360, 484 392 C 482 416, 434 418, 400 410 Z" fill="#A8C5B4" />
+          <Circle cx="400" cy="402" r="17" fill="#F5EFE3" />
+        </Svg>
+      </Animated.View>
+      <Animated.View style={[layer, { transform: [{ translateY: tagY }] }]} pointerEvents="none">
+        <Svg width="100%" height="100%" viewBox={VB}>
+          <Path d="M418 412 C 470 440, 500 490, 524 538" stroke="#5C6B64" strokeWidth="5" fill="none" />
+          <G transform="rotate(-14 560 560)">
+            <Rect x="512" y="524" width="150" height="84" rx="14" fill="#FFFFFF" stroke="#E4DFD5" strokeWidth="4" />
+            <Circle cx="534" cy="566" r="8" fill="#A8C5B4" />
+            <Line x1="556" y1="552" x2="638" y2="552" stroke="#A8C5B4" strokeWidth="9" strokeLinecap="round" />
+            <Line x1="556" y1="580" x2="614" y2="580" stroke="#E4DFD5" strokeWidth="9" strokeLinecap="round" />
+          </G>
+        </Svg>
+      </Animated.View>
     </View>
   );
 }
@@ -963,8 +1074,6 @@ function FamilyBiographer() {
   // images at natural (huge) size.
   const winW = useWindowDimensions().width;
   const illoW = winW - 64;
-  const illoBook = { width: illoW, height: Math.round(illoW / 1.45), borderRadius: 20, marginTop: 18 };
-  const illoGift = { width: illoW, height: Math.round(illoW / 2.1), borderRadius: 20, marginTop: 14 };
 
   // Sales funnel — the FIRST thing a prospective buyer sees. One idea per
   // page, tapped through in order (hook → problem → solution → proof →
@@ -1010,7 +1119,7 @@ function FamilyBiographer() {
       render: () => (
         <>
           <Text style={s.h1}>So we made asking effortless.</Text>
-          <Image source={require("./assets/book.png")} style={illoBook} resizeMode="cover" />
+          <BookScene width={illoW} />
           <View style={s.step}>
             <Text style={s.stepNum}>1</Text>
             <View style={s.stepBody}>
@@ -1090,7 +1199,7 @@ function FamilyBiographer() {
       render: () => (
         <>
           <Text style={s.h1}>Everything included</Text>
-          <Image source={require("./assets/gift.png")} style={illoGift} resizeMode="cover" />
+          <GiftScene width={Math.round(illoW * 0.78)} />
           {[
             "A professionally written biography of their life",
             "A printed hardcover, shipped to your family",
