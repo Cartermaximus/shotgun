@@ -599,6 +599,18 @@ function FamilyBiographer() {
       // Restore this account's storyteller (post-logout or fresh device):
       // the one with the most stories, not merely the newest id.
       if (subjectId) linkSubjectToAccount(data.token, subjectId);
+      // Reclaim a storyteller this device knew before the last logout, even
+      // if the account never had it linked (pre-account storytellers).
+      if (!subjectId) {
+        const last = await AsyncStorage.getItem("lastSubjectId").catch(() => null);
+        if (last) {
+          linkSubjectToAccount(data.token, last);
+          setSubjectId(last);
+          AsyncStorage.setItem("subjectId", last).catch(() => {});
+          const st = await loadStories(last);
+          if (st.length) { setShowSales(false); setView("home"); return; }
+        }
+      }
       if (!subjectId && data.subjects?.length) {
         const best = [...data.subjects].sort((a, b) => b.storyCount - a.storyCount)[0];
         setSubjectId(best.id);
@@ -675,6 +687,9 @@ function FamilyBiographer() {
     }
     // Full reset: signing out returns this phone to a fresh state. The
     // account's storytellers are restored from the server on next sign-in.
+    // Keep a private pointer to this device's storyteller so signing back
+    // in can reclaim it — logging out must never orphan a life story.
+    if (subjectId) await AsyncStorage.setItem("lastSubjectId", subjectId).catch(() => {});
     await AsyncStorage.multiRemove(["account", "subjectId", "name", "about"]).catch(() => {});
     pendingSessionRef.current = null;
     setAccount(null); setSubjectId(null); setName(""); setAbout("");
@@ -810,11 +825,16 @@ function FamilyBiographer() {
   // Did playback actually begin? iOS reports isPlaying:false / position 0
   // when a play() call lands in a session it won't honor.
   async function verifyPlaying(sound) {
-    await new Promise((r) => setTimeout(r, 450));
-    try {
-      const st = await sound.getStatusAsync();
-      return st.isLoaded && (st.isPlaying || st.didJustFinish || (st.positionMillis || 0) > 0);
-    } catch { return false; }
+    // Streamed audio can take a moment to spin up; poll rather than guess.
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 150));
+      try {
+        const st = await sound.getStatusAsync();
+        if (!st.isLoaded) continue;
+        if (st.isPlaying || st.didJustFinish || (st.positionMillis || 0) > 0) return true;
+      } catch { return false; }
+    }
+    return false;
   }
 
   // Speak one line: establish the audio session, start, confirm it's really
@@ -829,15 +849,22 @@ function FamilyBiographer() {
       let sound = null;
       try {
         await playbackMode();
-        const created = await Audio.Sound.createAsync({ uri }, { shouldPlay: false });
+        // Start playing AT CREATION. The /tts response is a stream with no
+        // content length, so a deferred play() or seek on it stalls at
+        // position 0 forever — creating with shouldPlay is the one path iOS
+        // reliably honors. Rate is baked into the initial status for the
+        // same reason.
+        const created = await Audio.Sound.createAsync(
+          { uri },
+          {
+            shouldPlay: true,
+            rate: voiceRateRef.current,
+            shouldCorrectPitch: true,
+            pitchCorrectionQuality: Audio.PitchCorrectionQuality?.High,
+          }
+        );
         sound = created.sound;
         soundRef.current = sound;
-        await sound.setStatusAsync({
-          rate: voiceRateRef.current,
-          shouldCorrectPitch: true,
-          pitchCorrectionQuality: Audio.PitchCorrectionQuality?.High,
-        }).catch(() => {});
-        await sound.playFromPositionAsync(0);
         if (!(await verifyPlaying(sound))) {
           console.log(`[audio] attempt ${attempt + 1} did not start — re-establishing session`);
           await sound.unloadAsync().catch(() => {});
