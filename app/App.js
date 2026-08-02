@@ -519,6 +519,19 @@ function FamilyBiographer() {
     } catch { setStatus("Couldn't reach the server — try again."); }
   }
 
+  async function signOut() {
+    const token = account?.token;
+    if (token) {
+      fetch(`${SERVER}/account/logout`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      }).catch(() => {});
+    }
+    await AsyncStorage.removeItem("account").catch(() => {});
+    setAccount(null); setPassword(""); setStatus("");
+    if (!stories.length) { setView(null); setShowSales(true); }
+  }
+
   // Recipient side of a gift: the 6-letter code signs this phone in and
   // links it to the buyer's account — no email or password for them.
   // Redeeming again (new phone, reinstall) recovers the same story.
@@ -1153,13 +1166,18 @@ function FamilyBiographer() {
           </View>
         )}
         {!!account && (
-          <Text style={s.signedIn}>
-            {account.family
-              ? `In ${name ? name + "'s" : "the"} family circle`
-              : account.gift
-              ? `A gift from ${account.buyerName || account.email}`
-              : `Signed in as ${account.email}`}
-          </Text>
+          <>
+            <Text style={s.signedIn}>
+              {account.family
+                ? `In ${name ? name + "'s" : "the"} family circle`
+                : account.gift
+                ? `A gift from ${account.buyerName || account.email}`
+                : `Signed in as ${account.email}`}
+            </Text>
+            <Pressable style={s.homeSettings} hitSlop={8} onPress={signOut}>
+              <Text style={s.homeSettingsText}>Sign out</Text>
+            </Pressable>
+          </>
         )}
       </KeyboardAvoidingView>
       </SafeAreaView>
