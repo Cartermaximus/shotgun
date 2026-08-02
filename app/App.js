@@ -180,6 +180,96 @@ function DriveScene({ width }) {
   );
 }
 
+
+// Animated explainer of one conversational turn: it asks → you talk → four
+// seconds of quiet brings the next question. Motion teaches the rhythm far
+// better than a paragraph, especially for storytellers who won't read one.
+function TalkCycle({ width }) {
+  const [active, setActive] = React.useState(0);
+  const bars = React.useRef([...Array(5)].map(() => new Animated.Value(0.35))).current;
+  const waves = React.useRef([...Array(3)].map(() => new Animated.Value(0.25))).current;
+  const dots = React.useRef([...Array(4)].map(() => new Animated.Value(0.15))).current;
+
+  React.useEffect(() => {
+    const cycle = setInterval(() => setActive((a) => (a + 1) % 3), 3200);
+    const anims = [];
+    waves.forEach((v, i) => {
+      const a = Animated.loop(Animated.sequence([
+        Animated.delay(i * 240),
+        Animated.timing(v, { toValue: 1, duration: 450, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.25, duration: 500, useNativeDriver: true }),
+        Animated.delay(480 - i * 240 > 0 ? 480 - i * 240 : 0),
+      ]));
+      a.start(); anims.push(a);
+    });
+    bars.forEach((v, i) => {
+      const a = Animated.loop(Animated.sequence([
+        Animated.delay(i * 130),
+        Animated.timing(v, { toValue: 1, duration: 270, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.35, duration: 290, useNativeDriver: true }),
+      ]));
+      a.start(); anims.push(a);
+    });
+    const dotLoop = Animated.loop(Animated.sequence([
+      ...dots.map((d) =>
+        Animated.timing(d, { toValue: 1, duration: 160, delay: 640, useNativeDriver: true })),
+      Animated.delay(500),
+      Animated.parallel(dots.map((d) =>
+        Animated.timing(d, { toValue: 0.15, duration: 220, useNativeDriver: true }))),
+    ]));
+    dotLoop.start(); anims.push(dotLoop);
+    return () => { clearInterval(cycle); anims.forEach((a) => a.stop()); };
+  }, []);
+
+  const cardW = (width - 20) / 3;
+  const card = (i) => ({
+    width: cardW, borderRadius: 14, paddingVertical: 12, alignItems: "center",
+    backgroundColor: "#FFFFFF", borderWidth: 2,
+    borderColor: active === i ? COLORS.pine : COLORS.hairline,
+    opacity: active === i ? 1 : 0.45,
+  });
+  const label = { color: COLORS.ink, fontSize: 12.5, fontWeight: "600", marginTop: 8 };
+  return (
+    <View style={{ flexDirection: "row", gap: 10, marginTop: 18, width }}>
+      <View style={card(0)}>
+        <View style={{ height: 40, justifyContent: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.pine }} />
+            {waves.map((v, i) => (
+              <Animated.View key={i} style={{
+                width: 4, height: 12 + i * 8, borderRadius: 2,
+                backgroundColor: COLORS.sage, opacity: v,
+              }} />
+            ))}
+          </View>
+        </View>
+        <Text style={label}>It asks</Text>
+      </View>
+      <View style={card(1)}>
+        <View style={{ height: 40, flexDirection: "row", alignItems: "center", gap: 5 }}>
+          {bars.map((v, i) => (
+            <Animated.View key={i} style={{
+              width: 6, height: 34, borderRadius: 3, backgroundColor: COLORS.pine,
+              transform: [{ scaleY: v }],
+            }} />
+          ))}
+        </View>
+        <Text style={label}>You talk</Text>
+      </View>
+      <View style={card(2)}>
+        <View style={{ height: 40, flexDirection: "row", alignItems: "center", gap: 7 }}>
+          {dots.map((v, i) => (
+            <Animated.View key={i} style={{
+              width: 11, height: 11, borderRadius: 6, backgroundColor: COLORS.pine, opacity: v,
+            }} />
+          ))}
+        </View>
+        <Text style={label}>4s quiet → next</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -907,6 +997,23 @@ function FamilyBiographer() {
       ),
     },
     {
+      key: "drive",
+      cta: "Continue",
+      render: () => (
+        <>
+          <Text style={s.h1}>Built for the drive.</Text>
+          <DriveScene width={illoW} />
+          <Text style={s.subhead}>
+            The best conversations happen side by side, not face to face —
+            every parent who's heard a teenager finally open up in the
+            passenger seat knows it. Questions come through the car speakers;
+            nothing to read, nothing to tap. Errands become chapters. (No car?
+            An armchair works just fine.)
+          </Text>
+        </>
+      ),
+    },
+    {
       key: "proof",
       cta: "Continue",
       render: () => (
@@ -1421,6 +1528,7 @@ function FamilyBiographer() {
         </View>
         <ScrollView contentContainerStyle={s.funnelScroll} showsVerticalScrollIndicator={false}>
           <Text style={s.h1}>{bp.title}</Text>
+          {briefPage === 0 && <TalkCycle width={illoW} />}
           {!!bp.subtitle && <Text style={s.subhead}>{bp.subtitle}</Text>}
           {bp.items.map(([title, body]) => (
             <View style={s.step} key={title}>
