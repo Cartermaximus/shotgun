@@ -330,6 +330,9 @@ function FamilyBiographer() {
   // speak() promises) can never accidentally start the microphone after the
   // session has ended — the bug where "End session" began listening.
   const sessionActiveRef = useRef(false);
+  // Everything Begin needs, prepared while the user reads the briefing:
+  // session started server-side and the opening lines' audio pre-generated.
+  const pendingSessionRef = useRef(null);
   // An answer that recorded fine but failed to upload — kept so "tap to
   // retry" actually re-sends it instead of silently re-recording.
   const pendingUploadRef = useRef(null);
@@ -361,6 +364,9 @@ function FamilyBiographer() {
       // Signed in but no stories yet → straight to setup, skip the funnel.
       if (acct) setShowSales(false);
     })();
+    // Wake the backend early — if the container was idle, the first request
+    // of the day pays the cold-start cost; better here than on Begin.
+    fetch(`${SERVER}/health`).catch(() => {});
     // "background" only — the mic-permission alert briefly makes the app
     // "inactive", and treating that as backgrounding would kill the session.
     const sub = AppState.addEventListener("change", (st) => {
@@ -653,6 +659,7 @@ function FamilyBiographer() {
       soundRef.current = sound;
       await sound.setStatusAsync({
         rate: voiceRateRef.current, shouldCorrectPitch: true,
+        pitchCorrectionQuality: Audio.PitchCorrectionQuality.High,
       }).catch(() => {});
       await new Promise((resolve) => {
         let settled = false;
@@ -696,7 +703,7 @@ function FamilyBiographer() {
     if (!list.length) return;
     const snd = list[Math.floor(Math.random() * list.length)];
     playbackMode()
-      .then(() => snd.setStatusAsync({ rate: voiceRateRef.current, shouldCorrectPitch: true }).catch(() => {}))
+      .then(() => snd.setStatusAsync({ rate: voiceRateRef.current, shouldCorrectPitch: true, pitchCorrectionQuality: Audio.PitchCorrectionQuality.High }).catch(() => {}))
       .then(() => snd.replayAsync()).catch(() => {});
   }
 
@@ -730,6 +737,28 @@ function FamilyBiographer() {
     setBriefPage(0);
     setConfigured(true);
     setPhase("brief");
+    prepareSession(id);
+  }
+
+  function prepareSession(id) {
+    const p = (async () => {
+      const r = await fetch(`${SERVER}/session/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectId: id, subjectName: name, subjectNotes: about }),
+      });
+      const data = await r.json();
+      let introSnd = null, qSnd = null;
+      if (!data.capped) {
+        [introSnd, qSnd] = await Promise.all([
+          data.intro ? loadTTS(data.intro) : Promise.resolve(null),
+          data.question ? loadTTS(data.question) : Promise.resolve(null),
+        ]);
+      }
+      return { data, introSnd, qSnd };
+    })();
+    p.catch(() => {}); // errors resurface when Begin consumes the promise
+    pendingSessionRef.current = p;
+    preloadHums();
   }
 
   async function startSession() {
@@ -745,12 +774,20 @@ function FamilyBiographer() {
         return;
       }
       preloadHums(); // warm the instant-acknowledgment sounds in the background
-      const r = await fetch(`${SERVER}/session/start`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subjectId, subjectName: name, subjectNotes: about }),
-      });
-      const data = await r.json();
+      const pending = pendingSessionRef.current;
+      pendingSessionRef.current = null;
+      let prepared = pending ? await pending.catch(() => null) : null;
+      if (!prepared) {
+        const r = await fetch(`${SERVER}/session/start`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subjectId, subjectName: name, subjectNotes: about }),
+        });
+        prepared = { data: await r.json(), introSnd: null, qSnd: null };
+      }
+      const { data, introSnd, qSnd } = prepared;
       if (data.capped) {
+        introSnd?.unloadAsync().catch(() => {});
+        qSnd?.unloadAsync().catch(() => {});
         sessionActiveRef.current = false;
         setConfigured(false);
         setShowSales(false);
@@ -758,20 +795,20 @@ function FamilyBiographer() {
         setStatus(data.message || "The interview is complete — a full book's worth of stories.");
         return;
       }
-      await askAndListen(data.question, data.intro, subjectId);
+      await askAndListen(data.question, data.intro, subjectId, { ackSnd: introSnd, qSnd });
     } catch {
       setPhase("error"); setStatus("Couldn't connect. Check your signal and tap to try again.");
     }
   }
 
-  async function askAndListen(q, bridge, id) {
+  async function askAndListen(q, bridge, id, pre = null) {
     if (!aliveRef.current || !sessionActiveRef.current) return;
     setQuestion(q); setHeard(""); setPhase("asking"); setStatus("");
     // Question audio generates IN THE BACKGROUND while the (short, fast)
     // acknowledgment plays — the ack must never wait on the question.
-    const qPromise = loadTTS(q);
+    const qPromise = pre?.qSnd ? Promise.resolve(pre.qSnd) : loadTTS(q);
     if (bridge) {
-      const ackSnd = await loadTTS(bridge);
+      const ackSnd = pre?.ackSnd ?? await loadTTS(bridge);
       if (!sessionActiveRef.current) {
         ackSnd?.unloadAsync().catch(() => {});
         qPromise.then((s) => s?.unloadAsync().catch(() => {}));
@@ -1141,7 +1178,10 @@ function FamilyBiographer() {
           {!!status && <Text style={s.hintLight}>{status}</Text>}
         </ScrollView>
         <Pressable style={s.primary}
-          onPress={() => { setStatus(""); setBriefPage(0); setConfigured(true); setPhase("brief"); }}>
+          onPress={() => {
+            setStatus(""); setBriefPage(0); setConfigured(true); setPhase("brief");
+            prepareSession(subjectId);
+          }}>
           <Text style={s.primaryText}>Continue the interview</Text>
         </Pressable>
         <View style={s.homeLinks}>
