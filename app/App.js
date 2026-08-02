@@ -784,34 +784,73 @@ function FamilyBiographer() {
     } catch { return null; }
   }
 
+  // Play a sound to completion; resolves when done. Throws on stall.
+  function playToEnd(sound, text) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(watchdog);
+        clearTimeout(stallCheck);
+        err ? reject(err) : resolve();
+      };
+      // Watchdog so a lost status callback can never freeze the loop.
+      const watchdog = setTimeout(() => finish(), 6000 + (text?.length || 40) * 120);
+      // Stall detector: told to play but producing nothing → fail fast so
+      // the caller can retry fresh instead of sitting in silence.
+      const stallCheck = setTimeout(async () => {
+        try {
+          const st = await sound.getStatusAsync();
+          console.log("[audio] stall check", JSON.stringify({
+            isLoaded: st.isLoaded, isPlaying: st.isPlaying,
+            pos: st.positionMillis, didJustFinish: st.didJustFinish }));
+          if (!st.isLoaded || (!st.isPlaying && !st.didJustFinish && (st.positionMillis || 0) === 0)) {
+            finish(new Error("playback stalled"));
+          }
+        } catch (e) { finish(e); }
+      }, 900);
+      sound.setOnPlaybackStatusUpdate((st) => {
+        if (st.isLoaded === false && st.error) { console.log("[audio] error", st.error); finish(new Error(st.error)); return; }
+        if (!st.isLoaded || st.didJustFinish) finish();
+      });
+      sound.playAsync().catch(finish);
+    });
+  }
+
   async function playLoaded(sound, text) {
-    if (!sound) { if (text) await speakLocal(text); return; }
     try {
       await playbackMode();
-      soundRef.current = sound;
-      await sound.setStatusAsync({
-        rate: voiceRateRef.current, shouldCorrectPitch: true,
-        pitchCorrectionQuality: Audio.PitchCorrectionQuality.High,
-      }).catch(() => {});
-      await new Promise((resolve) => {
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(watchdog);
-          resolve();
-        };
-        // Watchdog so a lost status callback can never freeze the loop.
-        const watchdog = setTimeout(finish, 6000 + (text?.length || 40) * 120);
-        sound.setOnPlaybackStatusUpdate((st) => {
-          if (!st.isLoaded || st.didJustFinish) finish();
-        });
-        sound.playAsync().catch(finish);
-      });
+      if (sound) {
+        soundRef.current = sound;
+        await sound.setStatusAsync({
+          rate: voiceRateRef.current, shouldCorrectPitch: true,
+          pitchCorrectionQuality: Audio.PitchCorrectionQuality?.High ?? "High",
+        }).catch((e) => console.log("[audio] setStatus failed", e?.message));
+        await playToEnd(sound, text);
+        soundRef.current = null;
+        await sound.unloadAsync().catch(() => {});
+        return;
+      }
+      throw new Error("no preloaded sound");
+    } catch (e) {
+      console.log("[audio] preloaded path failed:", e?.message, "— retrying fresh");
       soundRef.current = null;
-      await sound.unloadAsync().catch(() => {});
-    } catch {
-      if (text) await speakLocal(text);
+      sound?.unloadAsync().catch(() => {});
+      // Fresh fetch-and-play — the always-worked path.
+      try {
+        const { sound: fresh } = await Audio.Sound.createAsync(
+          { uri: `${SERVER}/tts?text=${encodeURIComponent((text || "").slice(0, 1200))}` },
+          { shouldPlay: true, rate: voiceRateRef.current, shouldCorrectPitch: true }
+        );
+        soundRef.current = fresh;
+        await playToEnd(fresh, text).catch(() => {});
+        soundRef.current = null;
+        await fresh.unloadAsync().catch(() => {});
+      } catch (e2) {
+        console.log("[audio] fresh path failed too:", e2?.message);
+        if (text) await speakLocal(text);
+      }
     }
   }
 
@@ -1337,6 +1376,12 @@ function FamilyBiographer() {
               <Text style={s.homeSettingsText}>Send as a gift</Text>
             </Pressable>
           </View>
+        )}
+        {!account && (
+          <Pressable style={s.homeSettings} hitSlop={8}
+            onPress={() => { setStatus(""); setAuthMode("signin"); setShowSales(false); setView("account"); }}>
+            <Text style={s.homeSettingsText}>Sign in</Text>
+          </Pressable>
         )}
         {!!account && (
           <>
