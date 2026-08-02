@@ -787,18 +787,9 @@ function FamilyBiographer() {
     });
   }
 
-  async function loadTTS(text) {
-    if (!text) return null;
-    try {
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: `${SERVER}/tts?text=${encodeURIComponent(text.slice(0, 1200))}` },
-        { shouldPlay: false }
-      );
-      return sound;
-    } catch { return null; }
-  }
-
-  // Play a sound to completion; resolves when done. Throws on stall.
+  // Play a sound to completion. Resolves when finished; rejects if it never
+  // actually starts (iOS can accept play() into a transitional audio session
+  // and simply do nothing — see verifyPlaying below).
   function playToEnd(sound, text) {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -806,90 +797,100 @@ function FamilyBiographer() {
         if (settled) return;
         settled = true;
         clearTimeout(watchdog);
-        clearTimeout(stallCheck);
         err ? reject(err) : resolve();
       };
-      // Watchdog so a lost status callback can never freeze the loop.
-      const watchdog = setTimeout(() => finish(), 6000 + (text?.length || 40) * 120);
-      // Stall detector: told to play but producing nothing → fail fast so
-      // the caller can retry fresh instead of sitting in silence.
-      const stallCheck = setTimeout(async () => {
-        try {
-          const st = await sound.getStatusAsync();
-          console.log("[audio] stall check", JSON.stringify({
-            isLoaded: st.isLoaded, isPlaying: st.isPlaying,
-            pos: st.positionMillis, didJustFinish: st.didJustFinish }));
-          if (!st.isLoaded || (!st.isPlaying && !st.didJustFinish && (st.positionMillis || 0) === 0)) {
-            finish(new Error("playback stalled"));
-          }
-        } catch (e) { finish(e); }
-      }, 900);
+      const watchdog = setTimeout(() => finish(), 8000 + (text?.length || 40) * 140);
       sound.setOnPlaybackStatusUpdate((st) => {
-        if (st.isLoaded === false && st.error) { console.log("[audio] error", st.error); finish(new Error(st.error)); return; }
+        if (st.isLoaded === false && st.error) { finish(new Error(st.error)); return; }
         if (!st.isLoaded || st.didJustFinish) finish();
       });
-      sound.playAsync().catch(finish);
     });
   }
 
-  async function playLoaded(sound, text) {
+  // Did playback actually begin? iOS reports isPlaying:false / position 0
+  // when a play() call lands in a session it won't honor.
+  async function verifyPlaying(sound) {
+    await new Promise((r) => setTimeout(r, 450));
     try {
-      await playbackMode();
-      if (sound) {
+      const st = await sound.getStatusAsync();
+      return st.isLoaded && (st.isPlaying || st.didJustFinish || (st.positionMillis || 0) > 0);
+    } catch { return false; }
+  }
+
+  // Speak one line: establish the audio session, start, confirm it's really
+  // moving, and if not, re-establish the session and insist once more.
+  // Sounds are created HERE, never prewarmed — a Sound object built while the
+  // session was mid-reconfiguration plays silently no matter what you do to
+  // it afterwards.
+  async function playLoaded(_ignored, text) {
+    if (!text) return;
+    const uri = `${SERVER}/tts?text=${encodeURIComponent(text.slice(0, 1200))}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let sound = null;
+      try {
+        await playbackMode();
+        const created = await Audio.Sound.createAsync({ uri }, { shouldPlay: false });
+        sound = created.sound;
         soundRef.current = sound;
         await sound.setStatusAsync({
-          rate: voiceRateRef.current, shouldCorrectPitch: true,
-          pitchCorrectionQuality: Audio.PitchCorrectionQuality?.High ?? "High",
-        }).catch((e) => console.log("[audio] setStatus failed", e?.message));
+          rate: voiceRateRef.current,
+          shouldCorrectPitch: true,
+          pitchCorrectionQuality: Audio.PitchCorrectionQuality?.High,
+        }).catch(() => {});
+        await sound.playFromPositionAsync(0);
+        if (!(await verifyPlaying(sound))) {
+          console.log(`[audio] attempt ${attempt + 1} did not start — re-establishing session`);
+          await sound.unloadAsync().catch(() => {});
+          soundRef.current = null;
+          sound = null;
+          await new Promise((r) => setTimeout(r, 250));
+          continue; // rebuild the session and the sound from scratch
+        }
         await playToEnd(sound, text);
         soundRef.current = null;
         await sound.unloadAsync().catch(() => {});
         return;
-      }
-      throw new Error("no preloaded sound");
-    } catch (e) {
-      console.log("[audio] preloaded path failed:", e?.message, "— retrying fresh");
-      soundRef.current = null;
-      sound?.unloadAsync().catch(() => {});
-      // Fresh fetch-and-play — the always-worked path.
-      try {
-        const { sound: fresh } = await Audio.Sound.createAsync(
-          { uri: `${SERVER}/tts?text=${encodeURIComponent((text || "").slice(0, 1200))}` },
-          { shouldPlay: true, rate: voiceRateRef.current, shouldCorrectPitch: true }
-        );
-        soundRef.current = fresh;
-        await playToEnd(fresh, text).catch(() => {});
+      } catch (e) {
+        console.log("[audio] play failed:", e?.message);
         soundRef.current = null;
-        await fresh.unloadAsync().catch(() => {});
-      } catch (e2) {
-        console.log("[audio] fresh path failed too:", e2?.message);
-        if (text) await speakLocal(text);
+        sound?.unloadAsync().catch(() => {});
       }
     }
+    console.log("[audio] falling back to the on-device voice");
+    await speakLocal(text);
   }
 
   async function speak(text) {
     if (!text) return;
-    await playLoaded(await loadTTS(text), text);
+    await playLoaded(null, text);
   }
 
   // Tiny neutral acknowledgments ("Mm-hmm."), preloaded once per session and
   // played the INSTANT an answer ends — a human interviewer reacts
   // immediately even while thinking. These mask the upload+transcribe+think
   // pipeline that used to be dead air.
-  const humSoundsRef = useRef([]);
-  async function preloadHums() {
-    if (humSoundsRef.current.length) return;
-    const sounds = await Promise.all(["Mm-hmm.", "Mmm.", "I see."].map((h) => loadTTS(h)));
-    humSoundsRef.current = sounds.filter(Boolean);
+  const HUMS = ["Mm-hmm.", "Mmm.", "I see."];
+  function preloadHums() {
+    // Warm the server-side TTS cache only; the Sound object is created when
+    // it's actually played.
+    for (const h of HUMS) {
+      fetch(`${SERVER}/tts?text=${encodeURIComponent(h)}`).catch(() => {});
+    }
   }
   function playHum() {
-    const list = humSoundsRef.current;
-    if (!list.length) return;
-    const snd = list[Math.floor(Math.random() * list.length)];
-    playbackMode()
-      .then(() => snd.setStatusAsync({ rate: voiceRateRef.current, shouldCorrectPitch: true, pitchCorrectionQuality: Audio.PitchCorrectionQuality.High }).catch(() => {}))
-      .then(() => snd.replayAsync()).catch(() => {});
+    const text = HUMS[Math.floor(Math.random() * HUMS.length)];
+    (async () => {
+      try {
+        await playbackMode();
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: `${SERVER}/tts?text=${encodeURIComponent(text)}` },
+          { shouldPlay: true, rate: voiceRateRef.current, shouldCorrectPitch: true }
+        );
+        sound.setOnPlaybackStatusUpdate((st) => {
+          if (st.isLoaded && st.didJustFinish) sound.unloadAsync().catch(() => {});
+        });
+      } catch { /* the hum is a nicety — never block the loop */ }
+    })();
   }
 
   function speakLocal(text) {
@@ -928,24 +929,22 @@ function FamilyBiographer() {
 
   function prepareSession(id) {
     const p = (async () => {
-      // iOS: sounds created before the audio session is configured can play
-      // silently — establish playback mode before pre-generating any audio.
-      await playbackMode().catch(() => {});
       const r = await fetch(`${SERVER}/session/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subjectId: id, subjectName: name, subjectNotes: about }),
       });
       const data = await r.json();
-      let introSnd = null, qSnd = null;
+      // Warm the TTS cache with plain fetches (no Sound objects — those must
+      // be born at play time). The server caches by phrase, so the real
+      // playback fetch comes back fast.
       if (!data.capped) {
-        [introSnd, qSnd] = await Promise.all([
-          data.intro ? loadTTS(data.intro) : Promise.resolve(null),
-          data.question ? loadTTS(data.question) : Promise.resolve(null),
-        ]);
+        for (const line of [data.intro, data.question].filter(Boolean)) {
+          fetch(`${SERVER}/tts?text=${encodeURIComponent(line.slice(0, 1200))}`).catch(() => {});
+        }
       }
-      return { data, introSnd, qSnd };
+      return { data };
     })();
-    p.catch(() => {}); // errors resurface when Begin consumes the promise
+    p.catch(() => {});
     pendingSessionRef.current = p;
     preloadHums();
   }
@@ -971,12 +970,10 @@ function FamilyBiographer() {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subjectId, subjectName: name, subjectNotes: about }),
         });
-        prepared = { data: await r.json(), introSnd: null, qSnd: null };
+        prepared = { data: await r.json() };
       }
-      const { data, introSnd, qSnd } = prepared;
+      const { data } = prepared;
       if (data.capped) {
-        introSnd?.unloadAsync().catch(() => {});
-        qSnd?.unloadAsync().catch(() => {});
         sessionActiveRef.current = false;
         setConfigured(false);
         setShowSales(false);
@@ -984,30 +981,18 @@ function FamilyBiographer() {
         setStatus(data.message || "The interview is complete — a full book's worth of stories.");
         return;
       }
-      await askAndListen(data.question, data.intro, subjectId, { ackSnd: introSnd, qSnd });
+      await askAndListen(data.question, data.intro, subjectId);
     } catch {
       setPhase("error"); setStatus("Couldn't connect. Check your signal and tap to try again.");
     }
   }
 
-  async function askAndListen(q, bridge, id, pre = null) {
+  async function askAndListen(q, bridge, id) {
     if (!aliveRef.current || !sessionActiveRef.current) return;
     setQuestion(q); setHeard(""); setPhase("asking"); setStatus("");
-    // Question audio generates IN THE BACKGROUND while the (short, fast)
-    // acknowledgment plays — the ack must never wait on the question.
-    const qPromise = pre?.qSnd ? Promise.resolve(pre.qSnd) : loadTTS(q);
-    if (bridge) {
-      const ackSnd = pre?.ackSnd ?? await loadTTS(bridge);
-      if (!sessionActiveRef.current) {
-        ackSnd?.unloadAsync().catch(() => {});
-        qPromise.then((s) => s?.unloadAsync().catch(() => {}));
-        return;
-      }
-      await playLoaded(ackSnd, bridge);
-    }
-    const qSnd = await qPromise;
-    if (!sessionActiveRef.current) { qSnd?.unloadAsync().catch(() => {}); return; }
-    await playLoaded(qSnd, q);
+    if (bridge) await playLoaded(null, bridge);
+    if (!sessionActiveRef.current) return;
+    await playLoaded(null, q);
     if (!sessionActiveRef.current) return; // session ended while speaking
     await beginRecording(id);
   }
